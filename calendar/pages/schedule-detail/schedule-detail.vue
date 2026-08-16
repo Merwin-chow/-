@@ -386,6 +386,8 @@
 
 <script setup>
 import { ref, computed, reactive, watch, nextTick, onMounted } from 'vue'
+import { getUid } from '@/utils/auth.js'
+import { callApi } from '@/utils/cloud.js'
 
 const scheduleId = ref('')
 const schedule = ref({})
@@ -410,21 +412,6 @@ const tabs = [
 const showToast = (msg) => {
 	toastMsg.value = msg
 	setTimeout(() => { toastMsg.value = '' }, 2000)
-}
-
-const getUserId = async () => {
-	const token = uni.getStorageSync('uni_id_token')
-	if (token) return token
-	const currentId = uni.getStorageSync('current_user_id')
-	if (currentId) return currentId
-	const visitorId = uni.getStorageSync('visitor_id') || generateVisitorId()
-	return 'visitor_' + visitorId
-}
-
-const generateVisitorId = () => {
-	const id = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-	uni.setStorageSync('visitor_id', id)
-	return id
 }
 
 const typeLabel = (t) => {
@@ -747,12 +734,9 @@ const drawLine = (data) => {
 // ===== 数据加载 =====
 const loadSchedule = async () => {
 	try {
-		const uid = await getUserId()
+		const uid = getUid()
 		myUid.value = uid
-		const res = await uniCloud.callFunction({
-			name: 'schedules',
-			data: { action: 'detail', schedule_id: scheduleId.value, user_id: uid }
-		}).catch(e => {
+		const res = await callApi('schedules', 'detail', { schedule_id: scheduleId.value, user_id: uid }).catch(e => {
 			console.error('detail fail:', e)
 			return { result: null }
 		})
@@ -768,12 +752,9 @@ const loadSchedule = async () => {
 			if (s.group_id) {
 				const g = groups.value.find(x => x._id === s.group_id)
 				groupName.value = g ? g.group_name : ''
-				const gd = await uniCloud.callFunction({
-					name: 'groups',
-					data: { action: 'detail', user_id: uid, group_id: s.group_id }
-				}).catch(() => null)
-				if (gd?.result?.code === 200) {
-					const me = (gd.result.data.members || []).find(m => m.user_id === uid)
+				const gd = await callApi('groups', 'detail', { user_id: uid, group_id: s.group_id }).catch(() => null)
+				if (gd?.code === 200) {
+					const me = (gd.data.members || []).find(m => m.user_id === uid)
 					if (me && me.role === 'owner') {
 						canEdit.value = true
 						canManage.value = true
@@ -796,10 +777,7 @@ const loadSchedule = async () => {
 }
 
 const loadGroups = async (uid) => {
-	const res = await uniCloud.callFunction({
-		name: 'groups',
-		data: { action: 'myGroups', user_id: uid }
-	}).catch(() => ({ result: null }))
+	const res = await callApi('groups', 'myGroups', { user_id: uid }).catch(() => ({ result: null }))
 	if (res?.result?.code === 200) {
 		groups.value = res.result.data || []
 	}
@@ -807,20 +785,14 @@ const loadGroups = async (uid) => {
 
 const loadSignups = async (uid) => {
 	if (schedule.value.scope !== 'group') return
-	const res = await uniCloud.callFunction({
-		name: 'schedules',
-		data: { action: 'signups', schedule_id: scheduleId.value, user_id: uid }
-	}).catch(() => ({ result: null }))
+	const res = await callApi('schedules', 'signups', { schedule_id: scheduleId.value, user_id: uid }).catch(() => ({ result: null }))
 	if (res?.result?.code === 200) {
 		signupList.value = res.result.data || []
 	}
 }
 
 const loadHistory = async (uid) => {
-	const res = await uniCloud.callFunction({
-		name: 'schedules',
-		data: { action: 'history', schedule_id: scheduleId.value, user_id: uid }
-	}).catch(() => ({ result: null }))
+	const res = await callApi('schedules', 'history', { schedule_id: scheduleId.value, user_id: uid }).catch(() => ({ result: null }))
 	if (res?.result?.code === 200) {
 		historyList.value = (res.result.data || []).map(h => ({
 			...h,
@@ -886,14 +858,10 @@ const submitSignup = async () => {
 		fd[f.key] = f.type === 'checkbox' ? (Array.isArray(v) ? v : []) : v
 	})
 	try {
-		const res = await uniCloud.callFunction({
-			name: 'schedules',
-			data: {
-				action: 'signup',
-				user_id: myUid.value,
-				schedule_id: scheduleId.value,
-				form_data: fd
-			}
+		const res = await callApi('schedules', 'signup', {
+			user_id: myUid.value,
+			schedule_id: scheduleId.value,
+			form_data: fd
 		}).catch(e => {
 			console.error('signup fail:', e)
 			return { result: null }
@@ -912,10 +880,7 @@ const submitSignup = async () => {
 
 const cancelSignup = async () => {
 	try {
-		const res = await uniCloud.callFunction({
-			name: 'schedules',
-			data: { action: 'cancelSignup', user_id: myUid.value, schedule_id: scheduleId.value }
-		}).catch(e => {
+		const res = await callApi('schedules', 'cancelSignup', { user_id: myUid.value, schedule_id: scheduleId.value }).catch(e => {
 			console.error('cancel fail:', e)
 			return { result: null }
 		})
@@ -936,10 +901,7 @@ const removeSignup = (r) => {
 		content: `确定移除「${(r.form_data && r.form_data.name) || '该成员'}」的报名？`,
 		success: async (res) => {
 			if (!res.confirm) return
-			const rr = await uniCloud.callFunction({
-				name: 'schedules',
-				data: { action: 'cancelSignup', user_id: r.user_id, schedule_id: scheduleId.value }
-			}).catch(() => ({ result: null }))
+			const rr = await callApi('schedules', 'cancelSignup', { user_id: r.user_id, schedule_id: scheduleId.value }).catch(() => ({ result: null }))
 			if (rr?.result?.code === 200) {
 				showToast('已移除')
 				await reloadSchedule()
@@ -951,10 +913,7 @@ const removeSignup = (r) => {
 }
 
 const reloadSchedule = async () => {
-	const res = await uniCloud.callFunction({
-		name: 'schedules',
-		data: { action: 'detail', schedule_id: scheduleId.value, user_id: myUid.value }
-	}).catch(() => ({ result: null }))
+	const res = await callApi('schedules', 'detail', { schedule_id: scheduleId.value, user_id: myUid.value }).catch(() => ({ result: null }))
 	if (res?.result?.code === 200) {
 		const s = res.result.data
 		s.schedule_status = s.schedule_status || 'not_started'
@@ -1062,20 +1021,16 @@ const syncSettingsSessionField = (form) => {
 const saveSettings = async () => {
 	if (!settings.title.trim()) return showToast('请填写活动名称')
 	try {
-		const res = await uniCloud.callFunction({
-			name: 'schedules',
-			data: {
-				action: 'updateActivity',
-				user_id: myUid.value,
-				schedule_id: scheduleId.value,
-				title: settings.title.trim(),
-				signup_quota: Number(settings.quota) || 0,
-				signup_form: normalizeSettingsForm(),
-				signup_deadline: settings.deadline,
-				use_sessions: settings.use_sessions,
-				sessions: settings.use_sessions ? settings.sessions : [],
-				signup_closed: settings.closed
-			}
+		const res = await callApi('schedules', 'updateActivity', {
+			user_id: myUid.value,
+			schedule_id: scheduleId.value,
+			title: settings.title.trim(),
+			signup_quota: Number(settings.quota) || 0,
+			signup_form: normalizeSettingsForm(),
+			signup_deadline: settings.deadline,
+			use_sessions: settings.use_sessions,
+			sessions: settings.use_sessions ? settings.sessions : [],
+			signup_closed: settings.closed
 		}).catch(e => {
 			console.error('updateActivity fail:', e)
 			return { result: null }
@@ -1104,28 +1059,22 @@ const SIGNUP_RESULT_TMPL = 'UVDiKNJ5K6pYWCC94empCnhmVjMep3nfOmkgQmYd2J0' // 日�
 const mySubscribed = ref(false)
 
 const loadNotifyState = async () => {
-	const uid = await getUserId()
+	const uid = getUid()
 	if (!uid || uid.startsWith('visitor_')) return
-	const res = await uniCloud.callFunction({
-		name: 'schedules',
-		data: { action: 'getNotifyState', user_id: uid }
-	}).catch(() => ({ result: null }))
+	const res = await callApi('schedules', 'getNotifyState', { user_id: uid }).catch(() => ({ result: null }))
 	if (res?.result?.code === 200) {
 		mySubscribed.value = (res.result.data || []).includes(SIGNUP_RESULT_TMPL)
 	}
 }
 
 const toggleNotify = async () => {
-	const uid = await getUserId()
+	const uid = getUid()
 	if (!uid || uid.startsWith('visitor_')) {
 		showToast('请先登录')
 		return
 	}
 	if (mySubscribed.value) {
-		await uniCloud.callFunction({
-			name: 'schedules',
-			data: { action: 'subscribeNotify', user_id: uid, template_id: SIGNUP_RESULT_TMPL, enabled: false }
-		}).catch(() => null)
+		await callApi('schedules', 'subscribeNotify', { user_id: uid, template_id: SIGNUP_RESULT_TMPL, enabled: false }).catch(() => null)
 		mySubscribed.value = false
 		showToast('已关闭提醒')
 		return
@@ -1138,10 +1087,7 @@ const toggleNotify = async () => {
 		tmplIds: [SIGNUP_RESULT_TMPL],
 		success: async (res) => {
 			if (res[SIGNUP_RESULT_TMPL] === 'accept') {
-				await uniCloud.callFunction({
-					name: 'schedules',
-					data: { action: 'subscribeNotify', user_id: uid, template_id: SIGNUP_RESULT_TMPL, enabled: true }
-				}).catch(() => null)
+				await callApi('schedules', 'subscribeNotify', { user_id: uid, template_id: SIGNUP_RESULT_TMPL, enabled: true }).catch(() => null)
 				mySubscribed.value = true
 				showToast('提醒已开启')
 			} else {
@@ -1164,10 +1110,7 @@ const deleteSchedule = () => {
 		title: '删除日程', content: '确定删除该日程？报名与历史将一并删除。',
 		success: async (res) => {
 			if (!res.confirm) return
-			await uniCloud.callFunction({
-				name: 'schedules',
-				data: { action: 'delete', user_id: myUid.value, schedule_id: scheduleId.value }
-			}).catch(e => console.error('delete schedule fail:', e))
+			await callApi('schedules', 'delete', { user_id: myUid.value, schedule_id: scheduleId.value }).catch(e => console.error('delete schedule fail:', e))
 			uni.showToast({ title: '已删除', icon: 'none' })
 			setTimeout(() => { uni.navigateBack() }, 600)
 		}
