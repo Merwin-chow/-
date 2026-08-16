@@ -3,19 +3,19 @@
  *
  * 身份优先级：
  *   1. 登录态：current_user_id（稳定 uid = uni-id-users._id）
- *   2. 异常态：有 token 无 uid → 需刷新登录（返回 null 提示）
+ *   2. 异常态：有 token 无 uid → 视为本地数据待刷新，仍给游客兜底 id，
+ *      但云函数端以 token 为准进行真实鉴权（resolveUid）
  *   3. 游客态：visitor_ 前缀本地 id
  *
- * M-10：getUid() 恒返回非空字符串（或 null 表示待登录）
+ * M-10 / G-02：getUid() 恒返回非空字符串，避免页面因空 uid 抛错。
  */
 
 export function getUid() {
   const uid = uni.getStorageSync('current_user_id')
   if (uid) return uid // 登录态：稳定 uid
-  const token = uni.getStorageSync('uni_id_token')
-  if (token) return null // 有 token 无 uid：异常，需刷新登录
+  // 有 token 无 uid：异常态，给游客兜底 id（云函数仍按 token 鉴权）
   const visitorId = uni.getStorageSync('visitor_id') || genVisitorId()
-  return 'visitor_' + visitorId // 游客态
+  return 'visitor_' + visitorId // 登录态缺失/游客态统一走游客兜底
 }
 
 export function getToken() {
