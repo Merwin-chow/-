@@ -47,55 +47,33 @@
 
 <script setup>
 import { ref } from 'vue'
+import { getUid } from '@/utils/auth.js'
+import { callApi } from '@/utils/cloud.js'
 
 const keyword = ref('')
 const cardResults = ref([])
 const favResults = ref([])
 const hasSearched = ref(false)
 
-const db = uniCloud.database()
-
-const getUserId = async () => {
-	try {
-		const res = await uniCloud.callFunction({
-			name: 'uni-id-users',
-			data: { action: 'getCurrentUser' }
-		})
-		if (res.result?.uid) return res.result.uid
-	} catch (e) {}
-	return 'visitor_' + (uni.getStorageSync('visitor_id') || generateVisitorId())
-}
-
-const generateVisitorId = () => {
-	const id = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-	uni.setStorageSync('visitor_id', id)
-	return id
-}
-
 const doSearch = async () => {
 	const kw = keyword.value.trim()
 	if (!kw) return
 	hasSearched.value = true
 
-	const user_id = await getUserId()
+	const user_id = getUid()
 
 	// 搜卡片
 	try {
-		const res = await uniCloud.callFunction({
-			name: 'flashcards',
-			data: { action: 'search', user_id, keyword: kw }
-		})
-		cardResults.value = (res.result && res.result.code === 200) ? (res.result.data || []) : []
+		const res = await callApi('flashcards', 'search', { user_id, keyword: kw })
+		cardResults.value = (res?.result && res.result.code === 200) ? (res.result.data || []) : []
 	} catch (e) {
 		cardResults.value = []
 	}
 
-	// 搜收藏
+	// 搜收藏（改走云函数，删除客户端直查）
 	try {
-		const frontRes = await db.collection('user_favorites')
-			.where({ user_id, content: db.command.regex({ value: kw, options: 'i' }) })
-			.get()
-		favResults.value = frontRes.data || []
+		const res = await callApi('toggle_favorite', 'search', { user_id, keyword: kw })
+		favResults.value = (res?.result && res.result.code === 200) ? (res.result.data || []) : []
 	} catch (e) {
 		favResults.value = []
 	}

@@ -41,6 +41,10 @@
 			"style": { "navigationBarTitleText": "发起报名" }
 		},
 		{
+			"path": "pages/search/search",
+			"style": { "navigationBarTitleText": "搜索" }
+		},
+		{
 			"path": "pages/login/login",
 			"style": { "navigationBarTitleText": "登录" }
 		}
