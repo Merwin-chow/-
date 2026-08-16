@@ -52,6 +52,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { getUid, requireLogin } from '@/utils/auth.js'
+import { callApi } from '@/utils/cloud.js'
 
 const favorites = ref([])
 const loading = ref(true)
@@ -80,35 +82,15 @@ const groupedList = computed(() => {
 	return order.map(d => map[d])
 })
 
-const getUserId = async () => {
-	const token = uni.getStorageSync('uni_id_token')
-	const userInfo = uni.getStorageSync('uni_id_user_info')
-	if (token && userInfo) return token
-	return null
-}
-
-const requireLogin = (targetPath) => {
-	const token = uni.getStorageSync('uni_id_token')
-	const userInfo = uni.getStorageSync('uni_id_user_info')
-	if (!token || !userInfo) {
-		uni.navigateTo({ url: `/pages/login/login?redirect=${encodeURIComponent(targetPath)}` })
-		return false
-	}
-	return true
-}
-
 const loadFavorites = async () => {
 	loading.value = true
 	try {
-		const user_id = await getUserId()
-		if (!user_id) {
+		const user_id = getUid()
+		if (!user_id || user_id.startsWith('visitor_')) {
 			favorites.value = []
 			return
 		}
-		const res = await uniCloud.callFunction({
-			name: 'toggle_favorite',
-			data: { action: 'list', user_id }
-		}).catch(e => {
+		const res = await callApi('toggle_favorite', 'list', { user_id }).catch(e => {
 			console.error('load favorites cloud fail:', e)
 			return { result: null }
 		})
@@ -131,11 +113,8 @@ const removeFavorite = async (item) => {
 		success: async (res) => {
 			if (!res.confirm) return
 			try {
-				const user_id = await getUserId()
-				await uniCloud.callFunction({
-					name: 'toggle_favorite',
-					data: { action: 'remove', user_id, date: item.date, content: item.content }
-				}).catch(e => console.error('remove favorite cloud fail:', e))
+				const user_id = getUid()
+				await callApi('toggle_favorite', 'remove', { user_id, date: item.date, content: item.content }).catch(e => console.error('remove favorite cloud fail:', e))
 				favorites.value = favorites.value.filter(f =>
 					!(f.date === item.date && f.content === item.content)
 				)
