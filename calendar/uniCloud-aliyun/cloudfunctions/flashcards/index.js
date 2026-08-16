@@ -50,21 +50,25 @@ exports.main = async (event, context) => {
     return { code: 200, data: res.data || [] }
   }
 
-  // 搜索卡片
+    // 搜索卡片（R6：分页；拉取更大上限后内存过滤，避免 >500 断档）
   if (action === 'search') {
-    if (!keyword) return { code: 200, data: [] }
+    if (!keyword) return { code: 200, data: [], total: 0 }
     const kw = keyword.toLowerCase()
+    const page = Math.max(parseInt(event.page) || 1, 1)
+    const pageSize = Math.min(Math.max(parseInt(event.page_size) || 20, 1), 50)
     const res = await db.collection('flashcards')
       .where({ user_id: uid })
       .orderBy('createTime', 'desc')
-      .limit(500)
+      .limit(2000)
       .get()
     const all = res.data || []
     const matched = all.filter(item =>
       (item.front && item.front.toLowerCase().includes(kw)) ||
       (item.back && item.back.toLowerCase().includes(kw))
     )
-    return { code: 200, data: matched }
+    const total = matched.length
+    const start = (page - 1) * pageSize
+    return { code: 200, data: matched.slice(start, start + pageSize), total, page, pageSize }
   }
 
   // 切换卡片状态 review ↔ library
