@@ -222,6 +222,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { getUid, requireLogin } from '@/utils/auth.js'
+import { callApi } from '@/utils/cloud.js'
 
 const SUBSCRIBE_TEMPLATE_ID = 'UVDiKNJ5K6pYWCC94empCnhmVjMep3nfOmkgQmYd2J0'
 
@@ -387,37 +389,10 @@ const setReminder = (minutes) => {
 	})
 }
 
-const requireLogin = () => {
-	const token = uni.getStorageSync('uni_id_token')
-	const userInfo = uni.getStorageSync('uni_id_user_info')
-	if (!token || !userInfo) {
-		uni.navigateTo({ url: `/pages/login/login?redirect=${encodeURIComponent('/pages/create-schedule/create-schedule')}` })
-		return false
-	}
-	return true
-}
-
-const getUserId = async () => {
-	const token = uni.getStorageSync('uni_id_token')
-	const userInfo = uni.getStorageSync('uni_id_user_info')
-	if (token && userInfo) return token
-	return null
-}
-
-const generateVisitorId = () => {
-	const id = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-	uni.setStorageSync('visitor_id', id)
-	return id
-}
-
 const loadGroups = async () => {
-	const uid = await getUserId()
-	if (!uid) return
+	const uid = getUid()
 	if (!uid || uid.startsWith('visitor_')) return
-	const res = await uniCloud.callFunction({
-		name: 'groups',
-		data: { action: 'myGroups', user_id: uid }
-	}).catch(e => {
+	const res = await callApi('groups', 'myGroups', { user_id: uid }).catch(e => {
 		console.error('load groups fail:', e)
 		return { result: null }
 	})
@@ -428,11 +403,8 @@ const loadGroups = async () => {
 
 const loadEditSchedule = async (sid) => {
 	try {
-		const uid = await getUserId()
-		const res = await uniCloud.callFunction({
-			name: 'schedules',
-			data: { action: 'detail', schedule_id: sid, user_id: uid }
-		}).catch(e => {
+		const uid = getUid()
+		const res = await callApi('schedules', 'detail', { schedule_id: sid, user_id: uid }).catch(e => {
 			console.error('load schedule fail:', e)
 			return { result: null }
 		})
@@ -479,11 +451,11 @@ const loadEditSchedule = async (sid) => {
 }
 
 const submitSchedule = async () => {
-	if (!requireLogin()) return
+	if (!requireLogin('/pages/create-schedule/create-schedule')) return
 	if (!canSubmit.value) return
 	creating.value = true
 	try {
-		const user_id = await getUserId()
+		const user_id = getUid()
 		const finalTitle = selectedTemplate.value === 'birthday' && memberName.value
 			? `${memberName.value}的生日`
 			: title.value.trim()
@@ -491,7 +463,6 @@ const submitSchedule = async () => {
 			? [{ minutes_before: reminderMinutes.value }]
 			: []
 		const data = {
-			action: editId.value ? 'update' : 'create',
 			user_id,
 			title: finalTitle,
 			date: date.value,
@@ -518,10 +489,7 @@ const submitSchedule = async () => {
 			description: description.value.trim()
 		}
 		if (editId.value) data.schedule_id = editId.value
-		const res = await uniCloud.callFunction({
-			name: 'schedules',
-			data
-		}).catch(e => {
+		const res = await callApi('schedules', editId.value ? 'update' : 'create', data).catch(e => {
 			console.error('schedule cloud fail:', e)
 			return { result: null }
 		})
@@ -544,7 +512,7 @@ const showToast = (msg) => {
 }
 
 onMounted(async () => {
-	if (!requireLogin()) return
+	if (!requireLogin('/pages/create-schedule/create-schedule')) return
 	await loadGroups()
 	const pages = getCurrentPages()
 	const page = pages[pages.length - 1]
