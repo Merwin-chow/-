@@ -2,9 +2,6 @@
 	"bsonType": "object",
 	"required": ["schedule_id", "group_id", "user_id", "status"],
 	"permission": {
-		"read": true,
-		"create": true,
-		"update": true,
 		"delete": false
 	},
 	"properties": {

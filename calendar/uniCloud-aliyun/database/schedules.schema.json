@@ -2,10 +2,10 @@
 	"bsonType": "object",
 	"required": ["owner_id", "title", "date"],
 	"permission": {
-		"read": true,
-		"create": true,
-		"update": true,
-		"delete": true
+		"read": false,
+		"create": false,
+		"update": false,
+		"delete": false
 	},
 	"properties": {
 		"_id": { "description": "文档内置ID" },
@@ -19,6 +19,7 @@
 		"group_id": { "bsonType": "string", "description": "所属群组ID（scope=group 时必填）" },
 		"signup_enabled": { "bsonType": "bool", "description": "是否启用报名（群日程）" },
 		"signup_quota": { "bsonType": "int", "description": "名额上限，0=不限" },
+		"signup_count": { "bsonType": "int", "description": "当前已报名人数（原子计数，并发报名不超卖）" },
 		"signup_fields": {
 			"bsonType": "array",
 			"items": { "bsonType": "string" },

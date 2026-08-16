@@ -2,10 +2,10 @@
 	"bsonType": "object",
 	"required": ["user_id", "token"],
 	"permission": {
-		"read": true,
-		"create": true,
-		"update": true,
-		"delete": true
+		"read": false,
+		"create": false,
+		"update": false,
+		"delete": false
 	},
 	"properties": {
 		"_id": { "description": "文档内置ID" },

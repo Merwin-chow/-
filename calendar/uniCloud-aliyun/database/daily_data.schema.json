@@ -2,10 +2,10 @@
 	"bsonType": "object",
 	"required": ["date"],
 	"permission": {
-		"read": true,
-		"create": true,
-		"update": true,
-		"delete": true
+		"read": false,
+		"create": false,
+		"update": false,
+		"delete": false
 	},
 	"properties": {
 		"_id": {
@@ -14,6 +14,10 @@
 		"date": {
 			"bsonType": "string",
 			"description": "日期 YYYY-MM-DD"
+		},
+		"expireAt": {
+			"bsonType": "timestamp",
+			"description": "当日缓存过期时间（date 次日 0 点）；历史日期缓存不清（时光机语义）"
 		},
 		"quote": {
 			"bsonType": "string",
