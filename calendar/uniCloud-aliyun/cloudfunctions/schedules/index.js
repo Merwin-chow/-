@@ -27,7 +27,7 @@ exports.main = async (event, context) => {
     scope, group_id, signup_enabled, reminders, member_name, description,
     schedule_id, month, keyword, form_data, sessions, signup_quota,
     signup_fields, signup_closed, signup_form, signup_deadline, view,
-    draft_id, template_id, enabled, use_sessions
+    draft_id, template_id, enabled, use_sessions, target_user_id
   } = event
 
   // 写操作/涉及他人数据操作：游客需登录
@@ -669,6 +669,17 @@ exports.main = async (event, context) => {
   // ===== 变更历史 =====
   if (action === 'history') {
     if (!schedule_id) return { code: 400, message: '缺少 schedule_id' }
+    const sRes = await db.collection('schedules').doc(schedule_id).get()
+    if (!sRes.data) return { code: 404, message: '日程不存在' }
+    const sItem = sRes.data
+    // 越权防护：私有日程仅创建者可看历史；群日程需为该群成员
+    if (sItem.scope === 'group') {
+      if (!(await isGroupMember(sItem.group_id, user_id))) {
+        return { code: 403, message: '非群成员不可查看' }
+      }
+    } else if (sItem.owner_id !== user_id) {
+      return { code: 403, message: '无权查看该日程历史' }
+    }
     const res = await db.collection('schedule_history')
       .where({ schedule_id })
       .orderBy('changeTime', 'desc')
@@ -798,13 +809,24 @@ exports.main = async (event, context) => {
   }
 
   // ===== 取消报名（若因满员自动关闭则重新开放） =====
+  // 既支持用户取消自己的报名，也支持创建者/群主移除他人报名（target_user_id）
   if (action === 'cancelSignup') {
     if (!schedule_id || !user_id) return { code: 400, message: '缺少参数' }
     const sRes = await db.collection('schedules').doc(schedule_id).get()
     if (!sRes.data) return { code: 404, message: '日程不存在' }
     const schedule = sRes.data
+    // 越权防护：取消/移除报名者，须为该日程创建者/群主，或取消自己的报名
+    let cancelUserId = user_id
+    if (target_user_id && target_user_id !== user_id) {
+      const isOwner = schedule.owner_id === user_id
+      const isGroupOwner = schedule.group_id && await isGroupOwner(schedule.group_id, user_id)
+      if (!isOwner && !isGroupOwner) return { code: 403, message: '仅创建者或群主可移除他人报名' }
+      // 目标用户必为该群成员，防止群主随意移除非本群成员
+      if (!(await isGroupMember(schedule.group_id, target_user_id))) return { code: 403, message: '该成员不在本群中' }
+      cancelUserId = target_user_id
+    }
     const existingRes = await db.collection('signups')
-      .where({ schedule_id, user_id, status: 'signed' })
+      .where({ schedule_id, user_id: cancelUserId, status: 'signed' })
       .get()
     if (existingRes.data && existingRes.data.length > 0) {
       const rec = existingRes.data[0]
@@ -815,7 +837,7 @@ exports.main = async (event, context) => {
       if (schedule.group_id) {
         const name = (rec.form_data && rec.form_data.name) || ''
         await logEvent({
-          group_id: schedule.group_id, type: 'signup_cancelled', user_id,
+          group_id: schedule.group_id, type: 'signup_cancelled', user_id: cancelUserId,
           data: { schedule_id, title: schedule.title, name }
         })
       }
@@ -891,6 +913,13 @@ exports.main = async (event, context) => {
     const sRes = await db.collection('schedules').doc(schedule_id).get()
     if (!sRes.data) return { code: 404, message: '日程不存在' }
     const schedule = sRes.data
+    // 越权防护：仅群日程返回名单，且仅该群成员可查看（报名名单含手机号/生日等 PII）
+    if (schedule.scope !== 'group' || !schedule.group_id) {
+      return { code: 400, message: '该日程无报名' }
+    }
+    if (!(await isGroupMember(schedule.group_id, user_id))) {
+      return { code: 403, message: '非群成员不可查看名单' }
+    }
     const signupRes = await db.collection('signups')
       .where({ schedule_id })
       .orderBy('signed_at', 'asc')
@@ -929,8 +958,13 @@ exports.main = async (event, context) => {
     const res = await db.collection('schedules').doc(schedule_id).get()
     if (!res.data) return { code: 404, message: '日程不存在' }
     const item = res.data
-    if (user_id && item.scope === 'group' && item.group_id && !(await isGroupMember(item.group_id, user_id))) {
-      return { code: 403, message: '非群成员不可查看' }
+    // 越权防护：群日程仅该群成员可查；私有日程仅创建者可查
+    if (item.scope === 'group') {
+      if (!(await isGroupMember(item.group_id, user_id))) {
+        return { code: 403, message: '非群成员不可查看' }
+      }
+    } else if (item.owner_id !== user_id) {
+      return { code: 403, message: '无权查看该日程' }
     }
     let enriched = { ...item, ...(await attachSignupCounts([item]))[0] }
     enriched.signup_form = resolveSignupForm(item)

@@ -901,7 +901,7 @@ const removeSignup = (r) => {
 		content: `确定移除「${(r.form_data && r.form_data.name) || '该成员'}」的报名？`,
 		success: async (res) => {
 			if (!res.confirm) return
-			const rr = await callApi('schedules', 'cancelSignup', { user_id: r.user_id, schedule_id: scheduleId.value }).catch(() => ({ result: null }))
+			const rr = await callApi('schedules', 'cancelSignup', { target_user_id: r.user_id, schedule_id: scheduleId.value }).catch(() => ({ result: null }))
 			if (rr?.result?.code === 200) {
 				showToast('已移除')
 				await reloadSchedule()
