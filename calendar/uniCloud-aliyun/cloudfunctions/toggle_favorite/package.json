@@ -1,6 +1,8 @@
 {
   "name": "toggle_favorite",
-  "dependencies": {},
+  "dependencies": {
+    "uni-id-common": "file:../common/uni-id-common"
+  },
   "extensions": {
     "uni-cloud-jql": {}
   }
