@@ -1,4 +1,6 @@
 <template>
+	
+	
 	<view class="container">
 		<!-- 头部 -->
 		<view class="header-row">
@@ -200,12 +202,9 @@ const onMonthSwitch = () => {
 
 const loadCalendarMarks = async () => {
 	try {
-		const user_id = await getUserId()
+		const user_id = getUid()
 		if (!user_id) return
-		const res = await uniCloud.callFunction({
-			name: 'toggle_favorite',
-			data: { action: 'getMarks', user_id }
-		}).catch(e => {
+		const res = await callApi('toggle_favorite', 'getMarks', { user_id, month: currentMonth() }).catch(e => {
 			console.error('getMarks call fail:', e)
 			return { result: null }
 		})
@@ -218,18 +217,13 @@ const loadCalendarMarks = async () => {
 }
 
 const getUserId = async () => {
-	const token = uni.getStorageSync('uni_id_token')
-	if (token) return token
-	const currentId = uni.getStorageSync('current_user_id')
-	if (currentId) return currentId
-	const visitorId = uni.getStorageSync('visitor_id') || generateVisitorId()
-	return 'visitor_' + visitorId
+	const uid = getUid()
+	return uid
 }
 
-const generateVisitorId = () => {
-	const id = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-	uni.setStorageSync('visitor_id', id)
-	return id
+const currentMonth = () => {
+	const d = new Date()
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
 const fetchJinrishici = () => {
@@ -337,18 +331,20 @@ const loadData = async (dateStr) => {
 
 const checkFavoriteStatus = async (list) => {
 	try {
-		const user_id = await getUserId()
+		const user_id = getUid()
 		if (!user_id || user_id.startsWith('visitor_')) return
-		for (let i = 0; i < list.length; i++) {
-			const s = list[i].source
-			if (s === 'singlecal' || s === 'lishi' || s === 'loading' || s === 'error' || !list[i].quote) continue
-			try {
-				const res = await uniCloud.callFunction({
-					name: 'toggle_favorite',
-					data: { action: 'check', user_id, date: currentQueryDateStr.value, content: list[i].quote }
-				})
-				if (res?.result && res.result.isFavorited) quoteList.value[i].isFavorited = true
-			} catch (e) {}
+		const items = list
+			.map((it, idx) => ({ idx, content: it.quote }))
+			.filter(x => x.content)
+		if (!items.length) return
+		const res = await callApi('toggle_favorite', 'checkBatch', {
+			user_id,
+			items: items.map(x => ({ date: currentQueryDateStr.value, content: x.content }))
+		}).catch(() => null)
+		if (!res?.result || res.result.code !== 200) return
+		const data = res.result.data || []
+		for (let k = 0; k < data.length; k++) {
+			if (data[k].isFavorited) quoteList.value[items[k].idx].isFavorited = true
 		}
 	} catch (e) {
 		console.error('check fav fail:', e)
@@ -357,13 +353,10 @@ const checkFavoriteStatus = async (list) => {
 
 const toggleFavorite = async (item, index) => {
 	try {
-		const user_id = await getUserId()
-		if (!user_id) { uni.showToast({ title: '请先登录', icon: 'none' }); return }
+		const user_id = getUid()
+		if (!user_id || user_id.startsWith('visitor_')) { uni.showToast({ title: '请先登录', icon: 'none' }); return }
 		const action = item.isFavorited ? 'remove' : 'add'
-		const res = await uniCloud.callFunction({
-			name: 'toggle_favorite',
-			data: { action, user_id, date: currentQueryDateStr.value, content: item.quote, author: item.author, source: item.source }
-		}).catch(e => {
+		const res = await callApi('toggle_favorite', action, { user_id, date: currentQueryDateStr.value, content: item.quote, author: item.author, source: item.source }).catch(e => {
 			console.error('toggle_favorite call fail:', e)
 			return { result: null }
 		})
@@ -401,9 +394,9 @@ const goToLogin = (targetPath) => {
 }
 
 const requireLogin = (targetPath) => {
-	const token = uni.getStorageSync('uni_id_token')
-	const userInfo = uni.getStorageSync('uni_id_user_info')
-	if (!token || !userInfo) {
+	const token = getToken()
+	const uid = uni.getStorageSync('current_user_id')
+	if (!token || !uid) {
 		goToLogin(targetPath)
 		return false
 	}
