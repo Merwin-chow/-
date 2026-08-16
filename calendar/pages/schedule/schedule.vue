@@ -108,6 +108,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { getUid, requireLogin } from '@/utils/auth.js'
+import { callApi } from '@/utils/cloud.js'
 
 const schedules = ref([])
 const keyword = ref('')
@@ -149,30 +151,12 @@ const getMonth = (dateStr) => {
 	return m + '月'
 }
 
-const getUserId = async () => {
-	const token = uni.getStorageSync('uni_id_token')
-	if (token) return token
-	const currentId = uni.getStorageSync('current_user_id')
-	if (currentId) return currentId
-	const visitorId = uni.getStorageSync('visitor_id') || generateVisitorId()
-	return 'visitor_' + visitorId
-}
-
-const generateVisitorId = () => {
-	const id = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-	uni.setStorageSync('visitor_id', id)
-	return id
-}
-
 const loadSchedules = async () => {
 	try {
-		const user_id = await getUserId()
+		const user_id = getUid()
 		const now = new Date()
 		const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-		const res = await uniCloud.callFunction({
-			name: 'schedules',
-			data: { action: 'getMonth', user_id, month }
-		}).catch(e => {
+		const res = await callApi('schedules', 'getMonth', { user_id, month }).catch(e => {
 			console.error('load schedules call fail:', e)
 			return { result: null }
 		})
@@ -194,11 +178,8 @@ const searchSchedules = async () => {
 		return
 	}
 	try {
-		const user_id = await getUserId()
-		const res = await uniCloud.callFunction({
-			name: 'schedules',
-			data: { action: 'search', user_id, keyword: keyword.value.trim() }
-		}).catch(e => {
+		const user_id = getUid()
+		const res = await callApi('schedules', 'search', { user_id, keyword: keyword.value.trim() }).catch(e => {
 			console.error('search schedules call fail:', e)
 			return { result: null }
 		})
@@ -212,16 +193,6 @@ const searchSchedules = async () => {
 
 const openDetail = (sid) => {
 	uni.navigateTo({ url: '/pages/schedule-detail/schedule-detail?schedule_id=' + sid })
-}
-
-const requireLogin = (targetPath) => {
-	const token = uni.getStorageSync('uni_id_token')
-	const userInfo = uni.getStorageSync('uni_id_user_info')
-	if (!token || !userInfo) {
-		uni.navigateTo({ url: `/pages/login/login?redirect=${encodeURIComponent(targetPath)}` })
-		return false
-	}
-	return true
 }
 
 const goHome = () => { uni.navigateBack() }
