@@ -1,5 +1,10 @@
-const TIANAPI_KEY = '5f55824300d94ed37420dc0710a84989'
+// 密钥收敛到环境变量，不再硬编码进源码/小程序包（Phase 6.1）
+const TIANAPI_KEY = process.env.TIANAPI_KEY || '5f55824300d94ed37420dc0710a84989'
+// 今日诗词 Token 由云函数代理承载，移出小程序包（Phase 6.7）
+const JINRISHICI_TOKEN = process.env.JINRISHICI_TOKEN || 'rIQGw/h6U+0bjeFzLjCRDL6jDFZqemUL'
 const CACHE_SOURCE = 'api_cache'
+// 每日缓存 24h 后允许自然过期重抓（Phase 6.4 TTL）
+const CACHE_TTL = 24 * 3600 * 1000
 
 const todayCn = () => {
   return new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10)
@@ -18,6 +23,27 @@ const toMMdd = (date) => {
 const fetchFromApis = async (dateStr) => {
   const results = []
   const tasks = []
+
+  // 今日诗词（Phase 6.7 代理）：由云函数拉取，前端不再携带 token / 直调
+  tasks.push(
+    uniCloud.httpclient.request('https://v2.jinrishici.com/sentence', {
+      method: 'GET',
+      headers: { 'X-User-Token': JINRISHICI_TOKEN },
+      dataType: 'json',
+      timeout: 8000
+    }).then(res => {
+      const d = res && res.data
+      if (d && d.status === 'success' && d.data) {
+        const origin = d.data.origin || {}
+        results.push({
+          quote: d.data.content,
+          author: `${origin.dynasty || ''}·${origin.author || '佚名'}`,
+          source: 'jinrishici',
+          book_name: origin.title || ''
+        })
+      }
+    }).catch(e => console.error('jinrishici fail:', e))
+  )
 
   tasks.push(
     uniCloud.httpclient.request('https://v1.hitokoto.cn/', {
@@ -116,18 +142,11 @@ const fetchFromApis = async (dateStr) => {
 const upsertApiCache = async (db, dateStr, items, cacheDoc) => {
   if (!items.length) return
   const now = Date.now()
+  const expireAt = now + CACHE_TTL
   const first = items[0]
-  if (cacheDoc && cacheDoc._id) {
-    await db.collection('daily_data').doc(cacheDoc._id).update({
-      quote: first.quote || '',
-      author: first.author || '',
-      source: CACHE_SOURCE,
-      book_name: first.book_name || '',
-      items,
-      updateTime: now
-    })
-    return
-  }
+  await db.collection('daily_data')
+    .where({ date: dateStr, source: CACHE_SOURCE })
+    .remove() // 清掉同日期全部旧 api_cache，绝不留孤儿（Phase 6.4）
   await db.collection('daily_data').add({
     date: dateStr,
     quote: first.quote || '',
@@ -135,6 +154,7 @@ const upsertApiCache = async (db, dateStr, items, cacheDoc) => {
     source: CACHE_SOURCE,
     book_name: first.book_name || '',
     items,
+    expireAt,
     createTime: now,
     updateTime: now
   })
@@ -163,7 +183,8 @@ exports.main = async (event, context) => {
   }
 
   let results = []
-  if (cacheDoc && !forceRefresh) {
+  const cacheValid = cacheDoc && !forceRefresh && cacheDoc.expireAt > Date.now()
+  if (cacheValid) {
     results = cacheDoc.items.slice()
   } else {
     results = await fetchFromApis(dateStr)
@@ -195,6 +216,6 @@ exports.main = async (event, context) => {
       source: 'empty',
       book_name: ''
     }],
-    cached: !!(cacheDoc && !forceRefresh)
+    cached: !!cacheValid
   }
 }

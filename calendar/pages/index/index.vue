@@ -154,7 +154,6 @@ const showAnswer = ref(false)
 
 const db = uniCloud.database()
 
-const JINRISHICI_TOKEN = 'rIQGw/h6U+0bjeFzLjCRDL6jDFZqemUL'
 const APPID_WEREAD = 'wx8a5d6f9fad07544e'
 const APPID_SINGLECAL = 'wxf510f247ff69b85e'
 
@@ -226,31 +225,6 @@ const currentMonth = () => {
 	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-const fetchJinrishici = () => {
-	return new Promise((resolve) => {
-		uni.request({
-			url: 'https://v2.jinrishici.com/sentence',
-			method: 'GET',
-			header: { 'X-User-Token': JINRISHICI_TOKEN },
-			timeout: 8000,
-			success: (res) => {
-				if (res.data && res.data.status === 'success' && res.data.data) {
-					const d = res.data.data
-					resolve({
-						quote: d.content,
-						author: `${d.origin.dynasty}·${d.origin.author}`,
-						source: 'jinrishici',
-						book_name: d.origin.title || ''
-					})
-				} else {
-					resolve(null)
-				}
-			},
-			fail: () => resolve(null)
-		})
-	})
-}
-
 const FALLBACK_QUOTES = [
 	{ quote: '人生如逆旅，我亦是行人。', author: '苏轼', source: 'fallback', book_name: '' },
 	{ quote: '山中何事？松花酿酒，春水煎茶。', author: '张可久', source: 'fallback', book_name: '' },
@@ -266,23 +240,17 @@ const loadData = async (dateStr) => {
 	try {
 		quoteList.value = [{ quote: '加载中...', author: '', source: 'loading', isFavorited: false }]
 
-		const [jinrishiciRes, cloudRes] = await Promise.all([
-			fetchJinrishici(),
-			uniCloud.callFunction({
-				name: 'get_daily_quote',
-				data: { date: dateStr || currentQueryDateStr.value }
-			}).catch(e => {
-				console.error('get_daily_quote fail:', e)
-				return { result: null }
-			})
-		])
+		// 今日诗词已由 get_daily_quote 云函数代理（Phase 6.7），前端不再直调/携带 token
+		const cloudRes = await uniCloud.callFunction({
+			name: 'get_daily_quote',
+			data: { date: dateStr || currentQueryDateStr.value }
+		}).catch(e => {
+			console.error('get_daily_quote fail:', e)
+			return { result: null }
+		})
 
 		const normalCards = []
 		const lishiEvents = []
-
-		if (jinrishiciRes) {
-			normalCards.push({ ...jinrishiciRes, isFavorited: false })
-		}
 
 		if (cloudRes?.result && cloudRes.result.code === 200 && cloudRes.result.data) {
 			cloudRes.result.data.forEach(item => {
