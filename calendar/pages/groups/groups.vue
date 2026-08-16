@@ -80,6 +80,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { getUid } from '@/utils/auth.js'
+import { callApi } from '@/utils/cloud.js'
 
 const groups = ref([])
 const userId = ref('')
@@ -97,16 +99,8 @@ const showToast = (msg) => {
 	setTimeout(() => { toastMsg.value = '' }, 2000)
 }
 
-const getUserId = async () => {
-	const token = uni.getStorageSync('uni_id_token')
-	if (token) return token
-	const visitorId = uni.getStorageSync('visitor_id')
-	if (visitorId) return 'visitor_' + visitorId
-	return null
-}
-
 const loadGroups = async () => {
-	const uid = await getUserId()
+	const uid = getUid()
 	if (!uid || uid.startsWith('visitor_')) {
 		uni.showModal({
 			title: '提示', content: '请先登录后再使用群组功能',
@@ -119,10 +113,7 @@ const loadGroups = async () => {
 	}
 	userId.value = uid
 	try {
-		const res = await uniCloud.callFunction({
-			name: 'groups',
-			data: { action: 'myGroups', user_id: uid }
-		}).catch(e => {
+		const res = await callApi('groups', 'myGroups', { user_id: uid }).catch(e => {
 			console.error('load groups call fail:', e)
 			return { result: null }
 		})
@@ -144,10 +135,7 @@ const joinGroup = async () => {
 		return
 	}
 	try {
-		const res = await uniCloud.callFunction({
-			name: 'groups',
-			data: { action: 'join', user_id: userId.value, invite_code: joinCode.value.toUpperCase(), group_remark: joinRemark.value.trim() }
-		}).catch(e => {
+		const res = await callApi('groups', 'join', { user_id: userId.value, invite_code: joinCode.value.toUpperCase(), group_remark: joinRemark.value.trim() }).catch(e => {
 			console.error('join group call fail:', e)
 			return { result: null }
 		})
@@ -171,15 +159,11 @@ const createGroup = async () => {
 		return
 	}
 	try {
-		const res = await uniCloud.callFunction({
-			name: 'groups',
-			data: {
-				action: 'create',
-				user_id: userId.value,
-				group_name: newGroupName.value.trim(),
-				description: newGroupDesc.value.trim(),
-				group_remark: newGroupRemark.value.trim()
-			}
+		const res = await callApi('groups', 'create', {
+			user_id: userId.value,
+			group_name: newGroupName.value.trim(),
+			description: newGroupDesc.value.trim(),
+			group_remark: newGroupRemark.value.trim()
 		}).catch(e => {
 			console.error('create group call fail:', e)
 			return { result: null }
