@@ -221,7 +221,14 @@ const saveProfile = async () => {
 		}
 		const res = await uniCloud.callFunction({
 			name: 'login',
-			data: { action: 'updateProfile', uid: userInfo.value.uid, nickname: name, avatar, birthday: birthdayInput.value }
+			data: {
+				action: 'updateProfile',
+				token: uni.getStorageSync('uni_id_token') || '',
+				uid: userInfo.value.uid,
+				nickname: name,
+				avatar,
+				birthday: birthdayInput.value
+			}
 		}).catch(e => {
 			console.error('updateProfile fail:', e)
 			return { result: null }

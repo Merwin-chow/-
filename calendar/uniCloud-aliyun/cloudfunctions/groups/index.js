@@ -1,10 +1,36 @@
+// Phase 2 统一鉴权：由 event.token 解析真实 uid，不再信任 event.user_id
+async function resolveUid(context, event) {
+  const token = event.token
+  if (!token) {
+    const uid = event.uid || ''
+    return uid.startsWith('visitor_') ? { uid, isVisitor: true } : { code: 401 }
+  }
+  const uniIdCommon = require('uni-id-common')
+  const uniID = uniIdCommon.createInstance({ context })
+  const res = await uniID.checkToken(token)
+  if (res.errCode) return { code: 401, message: '登录已失效' }
+  return { uid: res.uid, isVisitor: false }
+}
+
 exports.main = async (event, context) => {
   const db = uniCloud.database()
   const cmd = db.command
+  const u = await resolveUid(context, event)
+  if (u.code) return u
+  const uid = u.uid
+  // token 身份覆盖 event.user_id：以下所有 body 中的 user_id 均指已解析的身份
+  const user_id = uid
+
   const {
-    action, user_id, profile_name, group_remark, group_id, group_name,
+    action, profile_name, group_remark, group_id, group_name,
     description, invite_code, target_user_id
   } = event
+
+  // 群操作/写操作：游客需登录
+  const requiresLogin = ['create', 'join', 'setRemark', 'leave', 'disband']
+  if (requiresLogin.includes(action) && u.isVisitor) {
+    return { code: 401, message: '请先登录' }
+  }
 
   const logEvent = async ({ group_id, type, user_id, data }) => {
     await db.collection('group_events').add({

@@ -1,13 +1,43 @@
+// Phase 2 统一鉴权：由 event.token 解析真实 uid，不再信任 event.user_id / event.owner_id
+async function resolveUid(context, event) {
+  const token = event.token
+  if (!token) {
+    const uid = event.uid || ''
+    return uid.startsWith('visitor_') ? { uid, isVisitor: true } : { code: 401 }
+  }
+  const uniIdCommon = require('uni-id-common')
+  const uniID = uniIdCommon.createInstance({ context })
+  const res = await uniID.checkToken(token)
+  if (res.errCode) return { code: 401, message: '登录已失效' }
+  return { uid: res.uid, isVisitor: false }
+}
+
 exports.main = async (event, context) => {
   const db = uniCloud.database()
   const cmd = db.command
+  const u = await resolveUid(context, event)
+  if (u.code) return u
+  const uid = u.uid
+  // token 身份覆盖 event.user_id / event.owner_id：以下所有 user_id/owner_id 均指已解析身份
+  const user_id = uid
+  // owner_id 仅作历史字段名兼容，强制等同解析后的身份，杜绝通过 owner_id 冒充他人
+  const owner_id = uid
   const {
-    action, user_id, owner_id, title, date, start_time, end_time, type,
+    action, title, date, start_time, end_time, type,
     scope, group_id, signup_enabled, reminders, member_name, description,
     schedule_id, month, keyword, form_data, sessions, signup_quota,
     signup_fields, signup_closed, signup_form, signup_deadline, view,
     draft_id, template_id, enabled, use_sessions
   } = event
+
+  // 写操作/涉及他人数据操作：游客需登录
+  const requiresLogin = [
+    'create', 'update', 'delete', 'publishSignup', 'signup', 'cancelSignup',
+    'updateActivity', 'saveSignupDraft', 'deleteSignupDraft', 'subscribeNotify'
+  ]
+  if (requiresLogin.includes(action) && u.isVisitor) {
+    return { code: 401, message: '请先登录' }
+  }
 
   const computeStatus = (item) => {
     const today = new Date().toISOString().slice(0, 10)
