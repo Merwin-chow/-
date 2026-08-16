@@ -1,7 +1,8 @@
 {
   "name": "schedules",
   "dependencies": {
-    "uni-subscribemsg": "file:../common/uni-subscribemsg"
+    "uni-id-common": "file:../../../uni_modules/uni-id-common/uniCloud/cloudfunctions/common/uni-id-common",
+    "uni-subscribemsg": "file:../../../uni_modules/uni-subscribemsg/uniCloud/cloudfunctions/common/uni-subscribemsg"
   },
   "extensions": {
     "uni-cloud-jql": {}

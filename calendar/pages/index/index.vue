@@ -137,6 +137,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { getUid, getToken } from '@/utils/auth.js'
+import { callApi } from '@/utils/cloud.js'
 
 const calendarRef = ref(null)
 const displayDay = ref('')

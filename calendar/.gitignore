@@ -2,3 +2,4 @@ unpackage/
 .DS_Store
 .hbuilderx/
 **/config.json
+**/node_modules/
