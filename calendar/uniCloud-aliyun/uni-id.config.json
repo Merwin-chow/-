@@ -1,6 +1,6 @@
 {
-	"passwordSecret": "salt-words-are-not-important",
-	"tokenSecret": "token-words-are-not-important",
+	"passwordSecret": "OuWc8q4mC4ozSzMz+DWquaL72hNeQKG8AosQnRCMM78=",
+	"tokenSecret": "BCJ7SKOBQPSrwmyXwVIP3aQBYcwXm9ZxOJvrc82VA9Q=",
 	"tokenExpiresIn": 2592000,
 	"tokenExpiresThreshold": 259200,
 	"passwordErrorLimit": 5,
