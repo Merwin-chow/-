@@ -1,0 +1,23 @@
+{
+  "name": "schedule_notify",
+  "dependencies": {
+    "uni-subscribemsg": "file:../common/uni-subscribemsg"
+  },
+  "cloudfunction-config": {
+    "concurrency": 1,
+    "memorySize": 128,
+    "timeout": 10,
+    "triggers": [
+      {
+        "name": "schedule_notify_timer",
+        "type": "timer",
+        "config": "0 */5 * * * * *"
+      },
+      {
+        "name": "birthday_notify_timer",
+        "type": "timer",
+        "config": "0 0 9 * * * *"
+      }
+    ]
+  }
+}

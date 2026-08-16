@@ -1,0 +1,9 @@
+{
+  "name": "schedules",
+  "dependencies": {
+    "uni-subscribemsg": "file:../common/uni-subscribemsg"
+  },
+  "extensions": {
+    "uni-cloud-jql": {}
+  }
+}

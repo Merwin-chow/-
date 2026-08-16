@@ -1,0 +1,7 @@
+{
+  "name": "toggle_favorite",
+  "dependencies": {},
+  "extensions": {
+    "uni-cloud-jql": {}
+  }
+}

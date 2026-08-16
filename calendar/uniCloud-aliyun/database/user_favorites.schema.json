@@ -1,0 +1,39 @@
+{
+	"bsonType": "object",
+	"required": ["user_id", "date", "content"],
+	"permission": {
+		"read": true,
+		"create": true,
+		"update": true,
+		"delete": true
+	},
+	"properties": {
+		"_id": {
+			"description": "文档内置ID"
+		},
+		"user_id": {
+			"bsonType": "string",
+			"description": "用户ID（openid）"
+		},
+		"date": {
+			"bsonType": "string",
+			"description": "收藏日期 YYYY-MM-DD"
+		},
+		"content": {
+			"bsonType": "string",
+			"description": "金句内容"
+		},
+		"author": {
+			"bsonType": "string",
+			"description": "作者"
+		},
+		"source": {
+			"bsonType": "string",
+			"description": "来源标识"
+		},
+		"createTime": {
+			"bsonType": "timestamp",
+			"description": "收藏时间"
+		}
+	}
+}

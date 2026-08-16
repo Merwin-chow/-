@@ -1,0 +1,32 @@
+{
+	"bsonType": "object",
+	"required": ["group_name", "creator_id"],
+	"permission": {
+		"read": false,
+		"create": false,
+		"update": false,
+		"delete": false
+	},
+	"properties": {
+		"_id": { "description": "文档内置ID" },
+		"group_name": { "bsonType": "string", "description": "群组名称" },
+		"creator_id": { "bsonType": "string", "description": "创建者用户ID" },
+		"invite_code": { "bsonType": "string", "description": "邀请码（6位）" },
+		"members": {
+			"bsonType": "array",
+			"items": {
+				"bsonType": "object",
+				"properties": {
+					"user_id": { "bsonType": "string" },
+					"role": { "bsonType": "string", "description": "owner/member" },
+					"profile_name": { "bsonType": "string", "description": "个人档案名（来自用户档案）" },
+					"group_remark": { "bsonType": "string", "description": "群内备注" },
+					"joinTime": { "bsonType": "timestamp" }
+				}
+			},
+			"description": "成员列表"
+		},
+		"description": { "bsonType": "string", "description": "群组描述" },
+		"createTime": { "bsonType": "timestamp", "description": "创建时间" }
+	}
+}

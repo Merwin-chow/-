@@ -1,0 +1,16 @@
+{
+	"bsonType": "object",
+	"required": ["user_id", "token"],
+	"permission": {
+		"read": true,
+		"create": true,
+		"update": true,
+		"delete": true
+	},
+	"properties": {
+		"_id": { "description": "文档内置ID" },
+		"user_id": { "bsonType": "string", "description": "用户ID" },
+		"token": { "bsonType": "string", "description": "登录token" },
+		"createTime": { "bsonType": "timestamp", "description": "创建时间" }
+	}
+}

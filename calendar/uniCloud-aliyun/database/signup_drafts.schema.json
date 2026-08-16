@@ -1,0 +1,32 @@
+{
+sonType": "object",
+	"required": ["user_id", "title"],
+	"permission": {
+		"read": true,
+		"create": true,
+		"update": true,
+		"delete": true
+	},
+	"properties": {
+		"_id": { "description": "文档内置ID" },
+		"user_id": { "bsonType": "string", "description": "发起人ID" },
+		"group_id": { "bsonType": "string", "description": "目标群组ID（可空）" },
+		"title": { "bsonType": "string", "description": "报名标题" },
+		"date": { "bsonType": "string", "description": "活动日期 YYYY-MM-DD" },
+		"start_time": { "bsonType": "string", "description": "开始时间 HH:mm" },
+		"end_time": { "bsonType": "string", "description": "结束时间 HH:mm" },
+		"type": { "bsonType": "string", "description": "模板类型 birthday/event/meeting/other" },
+		"description": { "bsonType": "string", "description": "备注" },
+		"signup_form": {
+			"bsonType": "array",
+			"description": "问卷字段[{key,label,type,required,options,prefill,save_to_profile}]"
+		},
+		"sessions": {
+			"bsonType": "array",
+			"description": "场次[{name,quota,start_time,end_time}]"
+		},
+		"signup_quota": { "bsonType": "int", "description": "名额上限，0不限" },
+		"signup_deadline": { "bsonType": "string", "description": "报名截止 YYYY-MM-DD" },
+		"updateTime": { "bsonType": "timestamp", "description": "更新时间" }
+	}
+}

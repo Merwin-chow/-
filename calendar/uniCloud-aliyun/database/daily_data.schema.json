@@ -1,0 +1,67 @@
+{
+	"bsonType": "object",
+	"required": ["date"],
+	"permission": {
+		"read": true,
+		"create": true,
+		"update": true,
+		"delete": true
+	},
+	"properties": {
+		"_id": {
+			"description": "文档内置ID"
+		},
+		"date": {
+			"bsonType": "string",
+			"description": "日期 YYYY-MM-DD"
+		},
+		"quote": {
+			"bsonType": "string",
+			"description": "金句内容（手动配置或缓存首条）"
+		},
+		"author": {
+			"bsonType": "string",
+			"description": "作者"
+		},
+		"source": {
+			"bsonType": "string",
+			"description": "来源：api_cache / hitokoto / tianapi / manual 等"
+		},
+		"book_name": {
+			"bsonType": "string",
+			"description": "关联书籍名（可选，用于跳转微信读书）"
+		},
+		"items": {
+			"bsonType": "array",
+			"description": "api_cache 聚合缓存：当日一言/新闻/历史上的今天等",
+			"items": {
+				"bsonType": "object",
+				"properties": {
+					"quote": { "bsonType": "string" },
+					"author": { "bsonType": "string" },
+					"source": { "bsonType": "string" },
+					"book_name": { "bsonType": "string" },
+					"year": { "bsonType": "string" },
+					"question": { "bsonType": "string" },
+					"answer": { "bsonType": "string" }
+				}
+			}
+		},
+		"question": {
+			"bsonType": "string",
+			"description": "今日思考题目"
+		},
+		"answer": {
+			"bsonType": "string",
+			"description": "思考题目解析"
+		},
+		"createTime": {
+			"bsonType": "timestamp",
+			"description": "记录创建时间"
+		},
+		"updateTime": {
+			"bsonType": "timestamp",
+			"description": "缓存更新时间"
+		}
+	}
+}

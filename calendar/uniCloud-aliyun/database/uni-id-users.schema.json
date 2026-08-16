@@ -1,0 +1,24 @@
+
+{
+	"bsonType": "object",
+	"required": ["openid"],
+	"permission": {
+		"read": true,
+		"create": true,
+		"update": true,
+		"delete": false
+	},
+	"properties": {
+		"_id": { "description": "文档内置ID" },
+		"openid": { "bsonType": "string", "description": "微信openid" },
+		"unionid": { "bsonType": "string", "description": "微信unionid" },
+		"nickname": { "bsonType": "string", "description": "用户昵称" },
+		"avatar": { "bsonType": "string", "description": "头像URL" },
+		"phone": { "bsonType": "string", "description": "手机号" },
+		"birthday": { "bsonType": "string", "description": "生日 YYYY-MM-DD（报名问卷沉淀）" },
+		"subscribe_templates": { "bsonType": "array", "description": "已授权的订阅消息模板ID列表" },
+		"group_ids": { "bsonType": "array", "description": "所属群组ID列表" },
+		"createTime": { "bsonType": "timestamp", "description": "注册时间" },
+		"lastLoginTime": { "bsonType": "timestamp", "description": "最后登录时间" }
+	}
+}

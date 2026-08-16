@@ -1,0 +1,7 @@
+{
+  "name": "get_daily_quote",
+  "dependencies": {},
+  "extensions": {
+    "uni-cloud-jql": {}
+  }
+}

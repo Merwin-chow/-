@@ -1,0 +1,18 @@
+{
+	"passwordSecret": "salt-words-are-not-important",
+	"tokenSecret": "token-words-are-not-important",
+	"tokenExpiresIn": 2592000,
+	"tokenExpiresThreshold": 259200,
+	"passwordErrorLimit": 5,
+	"passwordErrorExpireTime": 600,
+	"applets": {
+		"wx": {
+			"oauth": {
+				"weixin": {
+					"appid": "wxf65817524dce86d0",
+					"appsecret": "70112a4f81871278e50c155cf21af65e"
+				}
+			}
+		}
+	}
+}

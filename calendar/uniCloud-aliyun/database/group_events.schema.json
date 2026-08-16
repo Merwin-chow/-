@@ -1,0 +1,21 @@
+{
+nType": "object",
+	"required": ["group_id", "type", "createTime"],
+	"permission": {
+		"read": false,
+		"create": false,
+		"update": false,
+		"delete": false
+	},
+	"properties": {
+		"_id": { "description": "文档内置ID" },
+		"group_id": { "bsonType": "string", "description": "群组ID" },
+		"type": {
+			"bsonType": "string",
+			"description": "member_joined/member_left/schedule_created/schedule_updated/schedule_deleted/signup_added/signup_cancelled/schedule_starting"
+		},
+		"user_id": { "bsonType": "string", "description": "触发者ID" },
+		"data": { "bsonType": "object", "description": "事件快照/摘要" },
+		"createTime": { "bsonType": "timestamp", "description": "事件时间" }
+	}
+}

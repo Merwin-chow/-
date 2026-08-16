@@ -1,0 +1,19 @@
+{
+	"bsonType": "object",
+	"required": ["user_id", "front", "back"],
+	"permission": {
+		"read": true,
+		"create": true,
+		"update": true,
+		"delete": true
+	},
+	"properties": {
+		"_id": { "description": "文档内置ID" },
+		"user_id": { "bsonType": "string", "description": "用户ID" },
+		"front": { "bsonType": "string", "description": "正面内容（问题）" },
+		"back": { "bsonType": "string", "description": "背面内容（答案）" },
+		"deck": { "bsonType": "string", "description": "所属牌组/分类" },
+		"status": { "bsonType": "string", "description": "review=复习队列, library=仅知识库" },
+		"createTime": { "bsonType": "timestamp", "description": "创建时间" }
+	}
+}

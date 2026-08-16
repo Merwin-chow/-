@@ -1,0 +1,19 @@
+{
+	"bsonType": "object",
+	"required": ["schedule_id", "action"],
+	"permission": {
+		"read": false,
+		"create": false,
+		"update": false,
+		"delete": false
+	},
+	"properties": {
+		"_id": { "description": "文档内置ID" },
+		"schedule_id": { "bsonType": "string", "description": "日程ID" },
+		"action": { "bsonType": "string", "description": "create/update/delete" },
+		"before": { "bsonType": "object", "description": "变更前快照" },
+		"after": { "bsonType": "object", "description": "变更后快照" },
+		"changed_by": { "bsonType": "string", "description": "操作人ID" },
+		"changeTime": { "bsonType": "timestamp", "description": "变更时间" }
+	}
+}

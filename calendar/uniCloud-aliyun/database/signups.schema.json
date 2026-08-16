@@ -1,0 +1,23 @@
+{
+	"bsonType": "object",
+	"required": ["schedule_id", "group_id", "user_id", "status"],
+	"permission": {
+		"read": true,
+		"create": true,
+		"update": true,
+		"delete": false
+	},
+	"properties": {
+		"_id": { "description": "文档内置ID" },
+		"schedule_id": { "bsonType": "string", "description": "日程ID" },
+		"group_id": { "bsonType": "string", "description": "群组ID" },
+		"user_id": { "bsonType": "string", "description": "报名人ID" },
+		"status": { "bsonType": "string", "description": "signed/cancelled" },
+		"form_data": {
+			"bsonType": "object",
+			"description": "报名表单数据（键为问卷字段 key，值可为 string 或 checkbox 的 string[]）"
+		},
+		"signed_at": { "bsonType": "timestamp", "description": "报名时间" },
+		"cancelled_at": { "bsonType": "timestamp", "description": "取消时间" }
+	}
+}
