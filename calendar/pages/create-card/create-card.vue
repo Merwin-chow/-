@@ -58,6 +58,8 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { getUid, requireLogin } from '@/utils/auth.js'
+import { callApi } from '@/utils/cloud.js'
 
 const front = ref('')
 const back = ref('')
@@ -69,52 +71,23 @@ const batchPlaceholder = '正面内容 --- 背面内容\n正面2 --- 背面2'
 
 const canSubmit = computed(() => front.value.trim() && back.value.trim() && !creating.value)
 
-const getUserId = async () => {
-	const token = uni.getStorageSync('uni_id_token')
-	if (token) return token
-	const currentId = uni.getStorageSync('current_user_id')
-	if (currentId) return currentId
-	const visitorId = uni.getStorageSync('visitor_id') || generateVisitorId()
-	return 'visitor_' + visitorId
-}
-
-const generateVisitorId = () => {
-	const id = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-	uni.setStorageSync('visitor_id', id)
-	return id
-}
-
 const showToast = (msg) => {
 	toastMsg.value = msg
 	setTimeout(() => { toastMsg.value = '' }, 2000)
 }
 
-const requireLogin = () => {
-	const token = uni.getStorageSync('uni_id_token')
-	const userInfo = uni.getStorageSync('uni_id_user_info')
-	if (!token || !userInfo) {
-		uni.navigateTo({ url: `/pages/login/login?redirect=${encodeURIComponent('/pages/create-card/create-card')}` })
-		return false
-	}
-	return true
-}
-
 const createCard = async () => {
-	if (!requireLogin()) return
+	if (!requireLogin('/pages/create-card/create-card')) return
 	if (!canSubmit.value) return
 	creating.value = true
 	try {
-		const user_id = await getUserId()
-		await uniCloud.callFunction({
-			name: 'flashcards',
-			data: {
-				action: 'create',
-				user_id,
-				front: front.value.trim(),
-				back: back.value.trim(),
-				deck: deck.value.trim() || '默认',
-				status: 'review'
-			}
+		const user_id = getUid()
+		await callApi('flashcards', 'create', {
+			user_id,
+			front: front.value.trim(),
+			back: back.value.trim(),
+			deck: deck.value.trim() || '默认',
+			status: 'review'
 		}).catch(e => {
 			console.error('create card cloud fail:', e)
 			throw e
@@ -130,11 +103,11 @@ const createCard = async () => {
 }
 
 const batchImport = async () => {
-	if (!requireLogin()) return
+	if (!requireLogin('/pages/create-card/create-card')) return
 	if (!batchText.value.trim()) return
 	creating.value = true
 	try {
-		const user_id = await getUserId()
+		const user_id = getUid()
 		const lines = batchText.value.trim().split('\n')
 		let count = 0
 		for (const line of lines) {
@@ -143,10 +116,7 @@ const batchImport = async () => {
 				const f = parts[0].trim()
 				const b = parts.slice(1).join('---').trim()
 				if (f && b) {
-					await uniCloud.callFunction({
-						name: 'flashcards',
-						data: { action: 'create', user_id, front: f, back: b, deck: deck.value.trim() || '默认', status: 'review' }
-					}).catch(e => console.error('batch create card fail:', e))
+					await callApi('flashcards', 'create', { user_id, front: f, back: b, deck: deck.value.trim() || '默认', status: 'review' }).catch(e => console.error('batch create card fail:', e))
 					count++
 				}
 			}
