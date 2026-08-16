@@ -50,25 +50,25 @@ exports.main = async (event, context) => {
     return { code: 200, data: res.data || [] }
   }
 
-    // 搜索卡片（R6：分页；拉取更大上限后内存过滤，避免 >500 断档）
-  if (action === 'search') {
-    if (!keyword) return { code: 200, data: [], total: 0 }
-    const kw = keyword.toLowerCase()
-    const page = Math.max(parseInt(event.page) || 1, 1)
-    const pageSize = Math.min(Math.max(parseInt(event.page_size) || 20, 1), 50)
-    const res = await db.collection('flashcards')
-      .where({ user_id: uid })
-      .orderBy('createTime', 'desc')
-      .limit(2000)
-      .get()
-    const all = res.data || []
-    const matched = all.filter(item =>
-      (item.front && item.front.toLowerCase().includes(kw)) ||
-      (item.back && item.back.toLowerCase().includes(kw))
-    )
-    const total = matched.length
-    const start = (page - 1) * pageSize
-    return { code: 200, data: matched.slice(start, start + pageSize), total, page, pageSize }
+    // 搜索卡片（R6：分页 + DB 级正则，不再全量拉取内存过滤）
+    if (action === 'search') {
+      if (!keyword) return { code: 200, data: [], total: 0 }
+      const kw = keyword.toLowerCase()
+      const page = Math.max(parseInt(event.page) || 1, 1)
+      const pageSize = Math.min(Math.max(parseInt(event.page_size) || 20, 1), 200)
+      // $regex 配合 i 选项做不区分大小写的子串匹配，由数据库端过滤，避免每次拉全量
+      const re = db.RegExp({ regexp: kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), options: 'i' })
+      const whereCond = { user_id: uid, $or: [ { front: re }, { back: re } ] }
+      const countRes = await db.collection('flashcards')
+        .where(whereCond)
+        .count()
+      const res = await db.collection('flashcards')
+        .where(whereCond)
+        .orderBy('createTime', 'desc')
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+        .get()
+      return { code: 200, data: res.data || [], total: countRes.total || 0, page, pageSize }
   }
 
   // 切换卡片状态 review ↔ library

@@ -133,6 +133,7 @@ async function runScheduleRemind(db, cmd, now) {
     .where({
       next_remind_at: cmd.and(cmd.gt(0), cmd.lte(now))
     })
+    .orderBy('next_remind_at', 'asc') // 同一轮优先处理最早到点，杜绝 >100 条时随机跳过（T1）
     .limit(100)
     .get()
 
@@ -248,22 +249,39 @@ function usersAdd(set, id) {
 async function runBirthdayNotify(db, cmd, now) {
   const date = todayCn()
   const mmdd = date.slice(5)
-  const uRes = await db.collection('uni-id-users')
-    .where({ birthday: db.RegExp({ regexp: `\\d{4}-${mmdd}`, options: '' }) })
-    .field({ _id: true, nickname: true, birthday: true })
-    .limit(100)
-    .get()
-  const birthdayUsers = (uRes.data || []).filter(u => u && u._id && !u._id.startsWith('visitor_'))
+  // 分批拉取当天生日用户，避免 .limit(100) 漏掉第 101+ 位
+  const birthdayUsers = []
+  const PB = 100
+  let skip = 0
+  for (;;) {
+    const res = await db.collection('uni-id-users')
+      .where({ birthday: db.RegExp({ regexp: `\\d{4}-${mmdd}`, options: '' }) })
+      .field({ _id: true, nickname: true, birthday: true })
+      .skip(skip).limit(PB)
+      .get()
+    const rows = (res.data || []).filter(u => u && u._id && !u._id.startsWith('visitor_'))
+    birthdayUsers.push(...rows)
+    if ((res.data || []).length < PB) break
+    skip += PB
+  }
   if (birthdayUsers.length === 0) return 0
 
   let sent = 0
   for (const bu of birthdayUsers) {
-    const gRes = await db.collection('groups')
-      .where({ 'members.user_id': bu._id })
-      .field({ _id: true, group_name: true, members: true })
-      .limit(50)
-      .get()
-    const groups = gRes.data || []
+    // 分批拉取该生日用户所在群，避免 .limit(50) 漏群
+    const groups = []
+    let gskip = 0
+    for (;;) {
+      const gRes = await db.collection('groups')
+        .where({ 'members.user_id': bu._id })
+        .field({ _id: true, group_name: true, members: true })
+        .skip(gskip).limit(50)
+        .get()
+      const gRows = gRes.data || []
+      groups.push(...gRows)
+      if (gRows.length < 50) break
+      gskip += 50
+    }
     for (const g of groups) {
       const members = g.members || []
       const me = members.find(m => m.user_id === bu._id)

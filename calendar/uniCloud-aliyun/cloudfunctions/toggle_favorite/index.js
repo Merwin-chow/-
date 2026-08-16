@@ -82,17 +82,17 @@ exports.main = async (event, context) => {
     return { code: 200, data }
   }
 
-  // search: 收藏搜索（Phase 3.4）
+  // search: 收藏搜索（Phase 3.4；DB 级正则，避免全量拉取内存过滤）
   if (action === 'search') {
     const keyword = (event.keyword || '').toString().trim().toLowerCase()
     if (!keyword) return { code: 200, data: [] }
+    const re = db.RegExp({ regexp: keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), options: 'i' })
     const res = await db.collection('user_favorites')
-      .where({ user_id: uid }).limit(500).get()
-    const matched = (res.data || []).filter(i =>
-      (i.content || '').toLowerCase().includes(keyword) ||
-      (i.author || '').toLowerCase().includes(keyword)
-    )
-    return { code: 200, data: matched }
+      .where({ user_id: uid, $or: [ { content: re }, { author: re } ] })
+      .orderBy('createTime', 'desc')
+      .limit(200)
+      .get()
+    return { code: 200, data: res.data || [] }
   }
 
   if (action !== 'add' && action !== 'remove') {

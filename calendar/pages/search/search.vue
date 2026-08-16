@@ -62,9 +62,9 @@ const doSearch = async () => {
 
 	const user_id = getUid()
 
-	// 搜卡片
+	// 搜卡片（DB 正则过滤，page_size 200 覆盖当前一次性列表展示）
 	try {
-		const res = await callApi('flashcards', 'search', { user_id, keyword: kw })
+		const res = await callApi('flashcards', 'search', { user_id, keyword: kw, page: 1, page_size: 200 })
 		cardResults.value = (res?.result && res.result.code === 200) ? (res.result.data || []) : []
 	} catch (e) {
 		cardResults.value = []
