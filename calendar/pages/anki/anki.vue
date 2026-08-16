@@ -111,6 +111,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { getUid, requireLogin } from '@/utils/auth.js'
+import { callApi } from '@/utils/cloud.js'
 
 const currentTab = ref('review')
 const reviewCards = ref([])
@@ -134,21 +136,6 @@ const filteredLibrary = computed(() => {
 	)
 })
 
-const getUserId = async () => {
-	const token = uni.getStorageSync('uni_id_token')
-	if (token) return token
-	const currentId = uni.getStorageSync('current_user_id')
-	if (currentId) return currentId
-	const visitorId = uni.getStorageSync('visitor_id') || generateVisitorId()
-	return 'visitor_' + visitorId
-}
-
-const generateVisitorId = () => {
-	const id = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-	uni.setStorageSync('visitor_id', id)
-	return id
-}
-
 const switchTab = (tab) => {
 	currentTab.value = tab
 	if (tab === 'review') loadReviewCards()
@@ -157,8 +144,8 @@ const switchTab = (tab) => {
 
 const loadReviewCards = async () => {
 	try {
-		const user_id = await getUserId()
-		const res = await uniCloud.callFunction({ name: 'flashcards', data: { action: 'list', user_id, status: 'review' } }).catch(e => {
+		const user_id = getUid()
+		const res = await callApi('flashcards', 'list', { user_id, status: 'review' }).catch(e => {
 			console.error('load review cards call fail:', e)
 			return { result: null }
 		})
@@ -173,8 +160,8 @@ const loadReviewCards = async () => {
 
 const loadAllCards = async () => {
 	try {
-		const user_id = await getUserId()
-		const res = await uniCloud.callFunction({ name: 'flashcards', data: { action: 'list', user_id } }).catch(e => {
+		const user_id = getUid()
+		const res = await callApi('flashcards', 'list', { user_id }).catch(e => {
 			console.error('load all cards call fail:', e)
 			return { result: null }
 		})
@@ -185,8 +172,8 @@ const loadAllCards = async () => {
 const toggleStatus = async (card) => {
 	const newStatus = card.status === 'review' ? 'library' : 'review'
 	try {
-		const user_id = await getUserId()
-		await uniCloud.callFunction({ name: 'flashcards', data: { action: 'updateStatus', user_id, card_id: card._id, new_status: newStatus } }).catch(e => {
+		const user_id = getUid()
+		await callApi('flashcards', 'updateStatus', { user_id, card_id: card._id, new_status: newStatus }).catch(e => {
 			console.error('updateStatus call fail:', e)
 		})
 		card.status = newStatus
@@ -213,24 +200,14 @@ const deleteCard = async (cardId) => {
 		title: '删除', content: '确定删除？',
 		success: async (res) => {
 			if (!res.confirm) return
-			const user_id = await getUserId()
-			await uniCloud.callFunction({ name: 'flashcards', data: { action: 'delete', user_id, card_id: cardId } }).catch(e => console.error('delete card fail:', e))
+			const user_id = getUid()
+			await callApi('flashcards', 'delete', { user_id, card_id: cardId }).catch(e => console.error('delete card fail:', e))
 			allCards.value = allCards.value.filter(c => c._id !== cardId)
 			reviewCards.value = reviewCards.value.filter(c => c._id !== cardId)
 			if (currentIndex.value >= reviewCards.value.length) currentIndex.value = Math.max(0, reviewCards.value.length - 1)
 			uni.showToast({ title: '已删除', icon: 'none' })
 		}
 	})
-}
-
-const requireLogin = (targetPath) => {
-	const token = uni.getStorageSync('uni_id_token')
-	const userInfo = uni.getStorageSync('uni_id_user_info')
-	if (!token || !userInfo) {
-		uni.navigateTo({ url: `/pages/login/login?redirect=${encodeURIComponent(targetPath)}` })
-		return false
-	}
-	return true
 }
 
 const goCreate = () => {
