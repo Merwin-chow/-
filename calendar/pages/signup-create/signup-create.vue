@@ -190,6 +190,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { getUid } from '@/utils/auth.js'
+import { callApi } from '@/utils/cloud.js'
 
 const SIGNUP_PUBLISH_TMPL = '46MLVHkksG2sXsydt_CuGDdRlW1Pdhv5YjdHf1Ojpgc' // 最近活动提醒：活动名称/活动时间/剩余天数
 
@@ -223,21 +225,6 @@ const canPublish = computed(() => title.value.trim() && date.value && !!groupId.
 const showToast = (msg) => {
 	toastMsg.value = msg
 	setTimeout(() => { toastMsg.value = '' }, 2000)
-}
-
-const getUserId = async () => {
-	const token = uni.getStorageSync('uni_id_token')
-	if (token) return token
-	const currentId = uni.getStorageSync('current_user_id')
-	if (currentId) return currentId
-	const visitorId = uni.getStorageSync('visitor_id') || generateVisitorId()
-	return 'visitor_' + visitorId
-}
-
-const generateVisitorId = () => {
-	const id = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-	uni.setStorageSync('visitor_id', id)
-	return id
 }
 
 const typeLabels = ['单行文本', '多行文本', '数字', '日期', '单选', '多选']
@@ -323,12 +310,9 @@ const addSignupSession = () => { signupSessions.value.push({ name: '', quota: ''
 const removeSignupSession = (i) => { signupSessions.value.splice(i, 1) }
 
 const loadGroups = async () => {
-	const uid = await getUserId()
+	const uid = getUid()
 	if (!uid || uid.startsWith('visitor_')) return
-	const res = await uniCloud.callFunction({
-		name: 'groups',
-		data: { action: 'myGroups', user_id: uid }
-	}).catch(e => {
+	const res = await callApi('groups', 'myGroups', { user_id: uid }).catch(e => {
 		console.error('load groups fail:', e)
 		return { result: null }
 	})
@@ -338,12 +322,9 @@ const loadGroups = async () => {
 }
 
 const loadDrafts = async () => {
-	const uid = await getUserId()
+	const uid = getUid()
 	if (!uid || uid.startsWith('visitor_')) return
-	const res = await uniCloud.callFunction({
-		name: 'schedules',
-		data: { action: 'listSignupDrafts', user_id: uid }
-	}).catch(() => ({ result: null }))
+	const res = await callApi('schedules', 'listSignupDrafts', { user_id: uid }).catch(() => ({ result: null }))
 	if (res?.result?.code === 200) {
 		drafts.value = res.result.data || []
 	}
@@ -383,11 +364,8 @@ const loadDraft = (d) => {
 }
 
 const deleteDraft = async (d) => {
-	const uid = await getUserId()
-	await uniCloud.callFunction({
-		name: 'schedules',
-		data: { action: 'deleteSignupDraft', user_id: uid, draft_id: d._id }
-	}).catch(() => null)
+	const uid = getUid()
+	await callApi('schedules', 'deleteSignupDraft', { user_id: uid, draft_id: d._id }).catch(() => null)
 	if (editDraftId.value === d._id) editDraftId.value = ''
 	await loadDrafts()
 	showToast('草稿已删除')
@@ -398,31 +376,27 @@ const saveDraft = async () => {
 	if (saving.value) return
 	saving.value = true
 	try {
-		const uid = await getUserId()
-		const res = await uniCloud.callFunction({
-			name: 'schedules',
-			data: {
-				action: 'saveSignupDraft',
-				user_id: uid,
-				draft_id: editDraftId.value,
-				group_id: groupId.value,
-				title: title.value.trim(),
-				date: date.value,
-				start_time: startTime.value,
-				end_time: endTime.value,
-				type: selectedTemplate.value,
-				description: description.value.trim(),
-				signup_form: normalizeForm(),
-				use_sessions: useSessions.value,
-				sessions: useSessions.value ? signupSessions.value.filter(s => s.name && s.name.trim()).map(s => ({
-					name: s.name.trim(),
-					quota: Number(s.quota) || 0,
-					start_time: s.start_time || '',
-					end_time: s.end_time || ''
-				})) : [],
-				signup_quota: Number(signupQuota.value) || 0,
-				signup_deadline: signupDeadline.value
-			}
+		const uid = getUid()
+		const res = await callApi('schedules', 'saveSignupDraft', {
+			user_id: uid,
+			draft_id: editDraftId.value,
+			group_id: groupId.value,
+			title: title.value.trim(),
+			date: date.value,
+			start_time: startTime.value,
+			end_time: endTime.value,
+			type: selectedTemplate.value,
+			description: description.value.trim(),
+			signup_form: normalizeForm(),
+			use_sessions: useSessions.value,
+			sessions: useSessions.value ? signupSessions.value.filter(s => s.name && s.name.trim()).map(s => ({
+				name: s.name.trim(),
+				quota: Number(s.quota) || 0,
+				start_time: s.start_time || '',
+				end_time: s.end_time || ''
+			})) : [],
+			signup_quota: Number(signupQuota.value) || 0,
+			signup_deadline: signupDeadline.value
 		}).catch(e => {
 			console.error('save draft fail:', e)
 			return { result: null }
@@ -450,31 +424,27 @@ const publishSignup = async () => {
 	}
 	publishing.value = true
 	try {
-		const uid = await getUserId()
-		const res = await uniCloud.callFunction({
-			name: 'schedules',
-			data: {
-				action: 'publishSignup',
-				user_id: uid,
-				draft_id: editDraftId.value,
-				group_id: groupId.value,
-				title: title.value.trim(),
-				date: date.value,
-				start_time: startTime.value,
-				end_time: endTime.value,
-				type: selectedTemplate.value,
-				description: description.value.trim(),
-				signup_form: normalizeForm(),
-				use_sessions: useSessions.value,
-				sessions: useSessions.value ? signupSessions.value.filter(s => s.name && s.name.trim()).map(s => ({
-					name: s.name.trim(),
-					quota: Number(s.quota) || 0,
-					start_time: s.start_time || '',
-					end_time: s.end_time || ''
-				})) : [],
-				signup_quota: Number(signupQuota.value) || 0,
-				signup_deadline: signupDeadline.value
-			}
+		const uid = getUid()
+		const res = await callApi('schedules', 'publishSignup', {
+			user_id: uid,
+			draft_id: editDraftId.value,
+			group_id: groupId.value,
+			title: title.value.trim(),
+			date: date.value,
+			start_time: startTime.value,
+			end_time: endTime.value,
+			type: selectedTemplate.value,
+			description: description.value.trim(),
+			signup_form: normalizeForm(),
+			use_sessions: useSessions.value,
+			sessions: useSessions.value ? signupSessions.value.filter(s => s.name && s.name.trim()).map(s => ({
+				name: s.name.trim(),
+				quota: Number(s.quota) || 0,
+				start_time: s.start_time || '',
+				end_time: s.end_time || ''
+			})) : [],
+			signup_quota: Number(signupQuota.value) || 0,
+			signup_deadline: signupDeadline.value
 		}).catch(e => {
 			console.error('publish signup fail:', e)
 			return { result: null }
