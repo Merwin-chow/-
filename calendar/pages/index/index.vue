@@ -152,8 +152,6 @@ const question = ref('')
 const answer = ref('')
 const showAnswer = ref(false)
 
-const db = uniCloud.database()
-
 const APPID_WEREAD = 'wx8a5d6f9fad07544e'
 const APPID_SINGLECAL = 'wxf510f247ff69b85e'
 
@@ -213,11 +211,6 @@ const loadCalendarMarks = async () => {
 	} catch (e) {
 		console.error('load marks fail:', e)
 	}
-}
-
-const getUserId = async () => {
-	const uid = getUid()
-	return uid
 }
 
 const currentMonth = () => {

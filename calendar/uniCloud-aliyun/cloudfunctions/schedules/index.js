@@ -191,12 +191,23 @@ exports.main = async (event, context) => {
 
   const getMyGroupIds = async (uid) => {
     if (!uid || uid.startsWith('visitor_')) return []
-    const res = await db.collection('groups')
-      .where({ 'members.user_id': uid })
-      .field({ _id: true })
-      .limit(100)
-      .get()
-    return (res.data || []).map(g => g._id)
+    // 分批拉取，避免 limit(100) 导致超 100 个群时群日程不可见
+    const BATCH = 100
+    let skip = 0
+    const ids = []
+    for (;;) {
+      const res = await db.collection('groups')
+        .where({ 'members.user_id': uid })
+        .field({ _id: true })
+        .skip(skip).limit(BATCH)
+        .get()
+      const rows = res.data || []
+      if (!rows.length) break
+      ids.push(...rows.map(g => g._id))
+      skip += rows.length
+      if (rows.length < BATCH) break
+    }
+    return ids
   }
 
   const isGroupMember = async (gid, uid) => {
@@ -373,16 +384,15 @@ exports.main = async (event, context) => {
   const attachSignupCounts = async (items) => {
     const ids = items.map(i => i._id)
     if (ids.length === 0) return items
-    const signupRes = await db.collection('signups')
-      .where({
-        schedule_id: cmd.in(ids),
-        status: 'signed'
-      })
-      .field({ schedule_id: true })
-      .get()
+    // G-06：改用聚合 group 一次性取回全部计数，避免 cmd.in(ids) 在日程量大时超 uniCloud in 上限
+    const agg = await db.collection('signups')
+      .aggregate()
+      .match({ schedule_id: cmd.in(ids), status: 'signed' })
+      .group({ _id: '$schedule_id', n: db.command.aggregate.sum(1) })
+      .end()
     const countMap = {}
-    ;(signupRes.data || []).forEach(s => {
-      countMap[s.schedule_id] = (countMap[s.schedule_id] || 0) + 1
+    ;(agg.data || []).forEach(s => {
+      countMap[s._id] = s.n || 0
     })
     return items.map(i => ({ ...i, signup_count: countMap[i._id] || 0 }))
   }
