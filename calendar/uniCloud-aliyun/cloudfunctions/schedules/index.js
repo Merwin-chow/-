@@ -219,6 +219,22 @@ exports.main = async (event, context) => {
     return ((g && g.members) || []).map(m => m.user_id).filter(Boolean)
   }
 
+  // 重算 signup_count 与 signup_closed（报名/取消共用，保证计数不漂移 G-04）
+  // coll 可为 db 或事务对象（均暴露 .collection()）
+  const recomputeSignupState = async (coll, schedule_id) => {
+    const cntRes = await coll.collection('signups')
+      .where({ schedule_id, status: 'signed' })
+      .count()
+    const cnt = cntRes.total || 0
+    const sRes = await coll.collection('schedules').doc(schedule_id).get()
+    const quota = (sRes.data && sRes.data.signup_quota) || 0
+    await coll.collection('schedules').doc(schedule_id).update({
+      signup_count: cnt,
+      signup_closed: quota > 0 && cnt >= quota
+    })
+    return { signup_count: cnt, signup_closed: quota > 0 && cnt >= quota }
+  }
+
   // ===== 订阅消息（一次性模板，需用户在微信内先授权） =====
   const DCLOUD_APPID = '__UNI__87DED5E'
   // 发布报名通知（最近活动提醒：活动名称/活动时间/剩余天数）
@@ -325,6 +341,7 @@ exports.main = async (event, context) => {
       group_id: finalScope === 'group' ? group_id : '',
       signup_enabled: isGroup ? !!signup_enabled : false,
       signup_quota: isGroup ? (Number(signup_quota) || 0) : 0,
+      signup_count: 0,
       signup_fields: isGroup ? (formKeys.length > 0 ? formKeys : ['name']) : [],
       signup_form: form,
       signup_deadline: deadline,
@@ -639,6 +656,8 @@ exports.main = async (event, context) => {
       updateData.reminders
     )
     await db.collection('schedules').doc(schedule_id).update(updateData)
+    // 名额/报名开关变化后重算 signup_count 与 signup_closed（G-04 联动）
+    await recomputeSignupState(db, schedule_id)
     await logHistory({ schedule_id, action: 'update', before: old, after: { ...old, ...updateData }, changed_by: uid })
     const eventGroupId = finalScope === 'group' ? (group_id || old.group_id) : old.group_id
     if (eventGroupId) {
@@ -733,79 +752,107 @@ exports.main = async (event, context) => {
       }
     }
 
-    // 场次名额校验
-    if (clean.session) {
-      const sessionsArr = schedule.sessions || []
-      if (sessionsArr.length > 0) {
-        const sItem = sessionsArr.find(s => s.name === clean.session)
-        if (sItem && sItem.quota > 0) {
-          const sCnt = await db.collection('signups')
-            .where({ schedule_id, status: 'signed', 'form_data.session': clean.session })
-            .count()
-          if (sCnt.total >= sItem.quota) return { code: 400, message: '该场次名额已满' }
-        }
-      }
-    }
-
-    const quota = schedule.signup_quota || 0
-    if (quota > 0) {
-      const cntRes = await db.collection('signups')
-        .where({ schedule_id, status: 'signed' })
-        .count()
-      if (cntRes.total >= quota) return { code: 400, message: '名额已满，无法报名' }
-    }
-
     const now = Date.now()
-    const existingRes = await db.collection('signups')
-      .where({ schedule_id, user_id })
-      .get()
-    if (existingRes.data && existingRes.data.length > 0) {
-      await db.collection('signups').doc(existingRes.data[0]._id).update({
-        status: 'signed',
-        signed_at: now,
-        cancelled_at: 0,
-        form_data: clean
-      })
-    } else {
-      await db.collection('signups').add({
-        schedule_id, group_id: schedule.group_id, user_id,
-        status: 'signed', signed_at: now, cancelled_at: 0, form_data: clean
-      })
-    }
 
-    // 档案沉淀：save_to_profile 字段写回 uni-id-users
-    if (!user_id.startsWith('visitor_')) {
-      const profUpdate = {}
-      form.forEach(f => {
-        if (f.save_to_profile && clean[f.key] !== undefined && clean[f.key] !== '') {
-          profUpdate[f.save_to_profile] = f.type === 'checkbox' ? clean[f.key].join(',') : clean[f.key]
-        }
-      })
-      if (Object.keys(profUpdate).length > 0) {
-        try {
-          await db.collection('uni-id-users').doc(user_id).update(profUpdate)
-        } catch (e) {
-          console.error('signup save profile fail:', e)
+    // ===== Phase 5.1：事务内原子报名，杜绝并发超卖 =====
+    const transaction = await db.startTransaction()
+    try {
+      // 事务内重读最新日程，防止事务外的竞态
+      const curRes = await transaction.collection('schedules').doc(schedule_id).get()
+      if (!curRes.data || curRes.data.signup_closed) throw { code: 400, message: '报名已关闭' }
+      const cur = curRes.data
+      const quota = cur.signup_quota || 0
+
+      // 场次名额校验（事务内，避免并发超场次名额）
+      if (clean.session) {
+        const sessionsArr = cur.sessions || []
+        if (sessionsArr.length > 0) {
+          const sItem = sessionsArr.find(s => s.name === clean.session)
+          if (sItem && sItem.quota > 0) {
+            const sCnt = await transaction.collection('signups')
+              .where({ schedule_id, status: 'signed', 'form_data.session': clean.session })
+              .count()
+            if (sCnt.total >= sItem.quota) throw { code: 400, message: '该场次名额已满' }
+          }
         }
       }
-    }
 
-    let closed = false
-    if (quota > 0) {
-      const cntRes2 = await db.collection('signups')
-        .where({ schedule_id, status: 'signed' })
-        .count()
-      if (cntRes2.total >= quota) {
-        await db.collection('schedules').doc(schedule_id).update({ signup_closed: true })
-        closed = true
+      // 总名额：signup_count 原子自增并校验上限（并发安全）
+      // 兼容老数据：signup_count 缺失时按 0 处理（cmd.exists(false)）
+      if (quota > 0) {
+        const up = await transaction.collection('schedules')
+          .where({
+            _id: schedule_id,
+            signup_count: cmd.or(cmd.lt(quota), cmd.exists(false))
+          })
+          .update({ signup_count: cmd.inc(1) })
+        if (up.updated === 0) throw { code: 400, message: '名额已满，无法报名' }
       }
+
+      // 原子 upsert：同一用户重复报名不会重复占名额
+      const existingRes = await transaction.collection('signups')
+        .where({ schedule_id, user_id })
+        .get()
+      if (existingRes.data && existingRes.data.length > 0) {
+        await transaction.collection('signups').doc(existingRes.data[0]._id).update({
+          status: 'signed',
+          signed_at: now,
+          cancelled_at: 0,
+          form_data: clean
+        })
+      } else {
+        await transaction.collection('signups').add({
+          schedule_id, group_id: schedule.group_id, user_id,
+          status: 'signed', signed_at: now, cancelled_at: 0, form_data: clean
+        })
+      }
+
+      // 满员自动关闭
+      if (quota > 0) {
+        const cntRes = await transaction.collection('signups')
+          .where({ schedule_id, status: 'signed' })
+          .count()
+        if (cntRes.total >= quota) {
+          await transaction.collection('schedules').doc(schedule_id).update({ signup_closed: true })
+        }
+      }
+
+      await transaction.commit()
+
+      // 判断是否满员自动关闭（事务外读取最新 signup_closed）
+      const postRes = await db.collection('schedules').doc(schedule_id).get()
+      const closed = !!(postRes.data && postRes.data.signup_closed)
+      const closeMsg = closed ? '报名成功，名额已满，报名已自动关闭' : '报名成功'
+
+      // 档案沉淀：save_to_profile 字段写回 uni-id-users
+      if (!user_id.startsWith('visitor_')) {
+        const profUpdate = {}
+        form.forEach(f => {
+          if (f.save_to_profile && clean[f.key] !== undefined && clean[f.key] !== '') {
+            profUpdate[f.save_to_profile] = f.type === 'checkbox' ? clean[f.key].join(',') : clean[f.key]
+          }
+        })
+        if (Object.keys(profUpdate).length > 0) {
+          try {
+            await db.collection('uni-id-users').doc(user_id).update(profUpdate)
+          } catch (e) {
+            console.error('signup save profile fail:', e)
+          }
+        }
+      }
+
+      await logEvent({
+        group_id: schedule.group_id, type: 'signup_added', user_id,
+        data: { schedule_id, title: schedule.title, name: clean.name || '' }
+      })
+      await sendSignupNotify(schedule.owner_id, schedule.title, clean.name || '')
+      return { code: 200, message: closeMsg }
+    } catch (e) {
+      try { await transaction.rollback() } catch (rb) {}
+      if (e && e.code) return { code: e.code, message: e.message }
+      console.error('signup transaction fail:', e)
+      return { code: 400, message: '报名失败' }
     }
-    await logEvent({
-      group_id: schedule.group_id, type: 'signup_added', user_id,
-      data: { schedule_id, title: schedule.title, name: clean.name || '' }
-    })
-    await sendSignupNotify(schedule.owner_id, schedule.title, clean.name || '')
-    return { code: 200, message: closed ? '报名成功，名额已满，报名已自动关闭' : '报名成功' }
   }
 
   // ===== 取消报名（若因满员自动关闭则重新开放） =====
@@ -830,25 +877,26 @@ exports.main = async (event, context) => {
       .get()
     if (existingRes.data && existingRes.data.length > 0) {
       const rec = existingRes.data[0]
-      await db.collection('signups').doc(rec._id).update({
-        status: 'cancelled',
-        cancelled_at: Date.now()
-      })
+      // 事务内：置 cancelled + 递减 signup_count + 按阈值重算 signup_closed（G-04 联动，避免计数漂移）
+      const transaction = await db.startTransaction()
+      try {
+        await transaction.collection('signups').doc(rec._id).update({
+          status: 'cancelled',
+          cancelled_at: Date.now()
+        })
+        await recomputeSignupState(transaction, schedule_id)
+        await transaction.commit()
+      } catch (e) {
+        try { await transaction.rollback() } catch (rb) {}
+        console.error('cancelSignup transaction fail:', e)
+        return { code: 400, message: '取消失败' }
+      }
       if (schedule.group_id) {
         const name = (rec.form_data && rec.form_data.name) || ''
         await logEvent({
           group_id: schedule.group_id, type: 'signup_cancelled', user_id: cancelUserId,
           data: { schedule_id, title: schedule.title, name }
         })
-      }
-      if (schedule.signup_closed) {
-        const quota = schedule.signup_quota || 0
-        const cntRes = await db.collection('signups')
-          .where({ schedule_id, status: 'signed' })
-          .count()
-        if (quota <= 0 || cntRes.total < quota) {
-          await db.collection('schedules').doc(schedule_id).update({ signup_closed: false })
-        }
       }
     }
     return { code: 200, message: '已取消报名' }
@@ -894,6 +942,8 @@ exports.main = async (event, context) => {
     if (signup_closed !== undefined) updateData.signup_closed = !!signup_closed
     updateData.updateTime = now
     await db.collection('schedules').doc(schedule_id).update(updateData)
+    // 名额/开关变化后重算 signup_count 与 signup_closed，避免计数漂移（G-04）
+    await recomputeSignupState(db, schedule_id)
     await logHistory({
       schedule_id, action: 'updateActivity',
       before: old, after: { ...old, ...updateData }, changed_by: uid

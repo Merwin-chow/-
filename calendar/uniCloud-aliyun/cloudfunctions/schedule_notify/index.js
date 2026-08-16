@@ -137,7 +137,7 @@ async function runScheduleRemind(db, cmd, now) {
     .get()
 
   const candidates = res.data || []
-  const triggered = []
+  const pending = [] // { schedule, dueIdx }
 
   for (const s of candidates) {
     if (!s.start_time || !Array.isArray(s.reminders) || s.reminders.length === 0) {
@@ -151,27 +151,27 @@ async function runScheduleRemind(db, cmd, now) {
       await db.collection('schedules').doc(s._id).update({ reminders, next_remind_at: 0 })
       continue
     }
-    let changed = false
-    for (const r of s.reminders) {
-      if (r.sent) continue
+    // 收集本次到点的提醒下标（先不置 sent，发送成功后才置）
+    const due = []
+    s.reminders.forEach((r, i) => {
+      if (r.sent) return
       const fireTime = scheduleTime - (Number(r.minutes_before) || 0) * 60000
-      if (now >= fireTime) {
-        r.sent = true
-        changed = true
-      }
-    }
-    if (changed) triggered.push(s)
-    else {
+      if (now >= fireTime) due.push(i)
+    })
+    if (due.length === 0) {
       // next_remind_at 不准时重算
       const next = computeNextRemindAt(s.date, s.start_time, s.reminders)
       if (next !== s.next_remind_at) {
         await db.collection('schedules').doc(s._id).update({ next_remind_at: next })
       }
+      continue
     }
+    pending.push({ schedule: s, due })
   }
 
   let sent = 0
-  for (const s of triggered) {
+  for (const p of pending) {
+    const s = p.schedule
     try {
       const openids = await getRecipientOpenids(db, cmd, s)
       if (TEMPLATE_ID) {
@@ -185,9 +185,11 @@ async function runScheduleRemind(db, cmd, now) {
           })
         }
       }
-      const next = computeNextRemindAt(s.date, s.start_time, s.reminders)
+      // 发送成功才置 sent（M-6/G-05：失败保持未发，下轮重发）
+      const reminders = s.reminders.map((r, i) => (p.due.includes(i) ? { ...r, sent: true } : r))
+      const next = computeNextRemindAt(s.date, s.start_time, reminders)
       await db.collection('schedules').doc(s._id).update({
-        reminders: s.reminders,
+        reminders,
         next_remind_at: next
       })
       if (s.scope === 'group' && s.group_id) {
