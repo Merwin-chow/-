@@ -133,6 +133,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { getUid } from '@/utils/auth.js'
+import { callApi } from '@/utils/cloud.js'
 
 const groupId = ref('')
 const group = ref({})
@@ -150,21 +152,6 @@ const toastMsg = ref('')
 const showToast = (msg) => {
 	toastMsg.value = msg
 	setTimeout(() => { toastMsg.value = '' }, 2000)
-}
-
-const getUserId = async () => {
-	const token = uni.getStorageSync('uni_id_token')
-	if (token) return token
-	const currentId = uni.getStorageSync('current_user_id')
-	if (currentId) return currentId
-	const visitorId = uni.getStorageSync('visitor_id') || generateVisitorId()
-	return 'visitor_' + visitorId
-}
-
-const generateVisitorId = () => {
-	const id = 'v_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-	uni.setStorageSync('visitor_id', id)
-	return id
 }
 
 const typeLabel = (t) => {
@@ -197,15 +184,11 @@ const saveRemark = async () => {
 		return
 	}
 	try {
-		const res = await uniCloud.callFunction({
-			name: 'groups',
-			data: {
-				action: 'setRemark',
-				user_id: myUid.value,
-				group_id: groupId.value,
-				target_user_id: remarkTarget.value.user_id,
-				group_remark: remarkValue.value.trim()
-			}
+		const res = await callApi('groups', 'setRemark', {
+			user_id: myUid.value,
+			group_id: groupId.value,
+			target_user_id: remarkTarget.value.user_id,
+			group_remark: remarkValue.value.trim()
 		}).catch(e => {
 			console.error('setRemark fail:', e)
 			return { result: null }
@@ -267,11 +250,8 @@ const formatTime = (ts) => {
 
 const loadDetail = async () => {
 	try {
-		const uid = await getUserId()
-		const res = await uniCloud.callFunction({
-			name: 'groups',
-			data: { action: 'detail', user_id: uid, group_id: groupId.value }
-		}).catch(e => {
+		const uid = getUid()
+		const res = await callApi('groups', 'detail', { user_id: uid, group_id: groupId.value }).catch(e => {
 			console.error('group detail fail:', e)
 			return { result: null }
 		})
@@ -291,20 +271,14 @@ const loadDetail = async () => {
 }
 
 const loadSchedules = async (uid) => {
-	const res = await uniCloud.callFunction({
-		name: 'schedules',
-		data: { action: 'getGroupSchedules', user_id: uid, group_id: groupId.value }
-	}).catch(() => ({ result: null }))
+	const res = await callApi('schedules', 'getGroupSchedules', { user_id: uid, group_id: groupId.value }).catch(() => ({ result: null }))
 	if (res?.result?.code === 200) {
 		schedules.value = res.result.data || []
 	}
 }
 
 const loadEvents = async (uid) => {
-	const res = await uniCloud.callFunction({
-		name: 'groups',
-		data: { action: 'events', user_id: uid, group_id: groupId.value }
-	}).catch(() => ({ result: null }))
+	const res = await callApi('groups', 'events', { user_id: uid, group_id: groupId.value }).catch(() => ({ result: null }))
 	if (res?.result?.code === 200) {
 		events.value = res.result.data || []
 	}
@@ -315,10 +289,7 @@ const leaveGroup = () => {
 		title: '退出群组', content: '确定退出该群组？',
 		success: async (res) => {
 			if (!res.confirm) return
-			await uniCloud.callFunction({
-				name: 'groups',
-				data: { action: 'leave', user_id: myUid.value, group_id: groupId.value }
-			}).catch(e => console.error('leave group fail:', e))
+			await callApi('groups', 'leave', { user_id: myUid.value, group_id: groupId.value }).catch(e => console.error('leave group fail:', e))
 			showToast('已退出')
 			setTimeout(() => { uni.navigateBack() }, 800)
 		}
@@ -330,10 +301,7 @@ const disbandGroup = () => {
 		title: '解散群组', content: '确定解散该群组？群日程和动态将一并删除',
 		success: async (res) => {
 			if (!res.confirm) return
-			await uniCloud.callFunction({
-				name: 'groups',
-				data: { action: 'disband', user_id: myUid.value, group_id: groupId.value }
-			}).catch(e => console.error('disband group fail:', e))
+			await callApi('groups', 'disband', { user_id: myUid.value, group_id: groupId.value }).catch(e => console.error('disband group fail:', e))
 			showToast('已解散')
 			setTimeout(() => { uni.navigateBack() }, 800)
 		}
