@@ -21,6 +21,21 @@ export function callApi(name, action, data = {}) {
       uni.navigateTo({ url: '/pages/login/login' })
       throw r
     }
+
+    // 正式契约：callApi 返回云函数的业务 result 本身。
+    // 兼容尚未迁移的旧调用方：旧页面仍可能读取 res.result.code/data。
+    // 使用非可枚举自引用，避免 result 别名造成 JSON.stringify 循环引用，
+    // 同时保留 res.code / res.data 等新调用方式。
+    if (r && typeof r === 'object' && !Array.isArray(r) && !r.result) {
+      const compatible = { ...r }
+      Object.defineProperty(compatible, 'result', {
+        value: compatible,
+        enumerable: false,
+        configurable: true
+      })
+      return compatible
+    }
+
     return r
   }).catch(err => {
     // 401 已被上方抛出处理过，这里保证异常可被调用方 catch
