@@ -70,8 +70,8 @@
 						</view>
 
 						<!-- 操作栏 -->
-						<view class="card-actions" v-if="item.source !== 'singlecal' && item.source !== 'lishi'">
-							<view class="action-group">
+						<view class="card-actions">
+							<view class="action-group" v-if="item.source !== 'singlecal' && item.source !== 'lishi'">
 								<view
 									class="action-pill"
 									:class="{ 'action-pill-active': item.isFavorited }"
@@ -87,10 +87,7 @@
 									<text class="action-pill-text action-pill-link-text">微信读书</text>
 								</view>
 							</view>
-							<text class="swiper-counter">{{ currentSwiperIndex + 1 }} / {{ quoteList.length }}</text>
-						</view>
-						<view class="card-actions" v-else>
-							<view></view>
+							<view v-else></view>
 							<text class="swiper-counter" :class="{ 'sc-counter-light': item.source === 'singlecal' }">{{ currentSwiperIndex + 1 }} / {{ quoteList.length }}</text>
 						</view>
 					</view>
@@ -137,7 +134,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getUid, getToken } from '@/utils/auth.js'
+import { getUid, requireLogin } from '@/utils/auth.js'
 import { callApi } from '@/utils/cloud.js'
 
 const calendarRef = ref(null)
@@ -157,18 +154,17 @@ const showAnswer = ref(false)
 const APPID_WEREAD = 'wx8a5d6f9fad07544e'
 const APPID_SINGLECAL = 'wxf510f247ff69b85e'
 
-const sourceLabel = (s) => {
-	const m = {
-		jinrishici: '诗词',
-		hitokoto: '一言',
-		tianapi_ai: 'AI',
-		generalnews: '新闻',
-		lishi: '历史今天',
-		singlecal: '单向历',
-		manual: '编辑推荐'
-	}
-	return m[s] || ''
+const SOURCE_LABELS = {
+	jinrishici: '诗词',
+	hitokoto: '一言',
+	tianapi_ai: 'AI',
+	generalnews: '新闻',
+	lishi: '历史今天',
+	singlecal: '单向历',
+	manual: '编辑推荐'
 }
+
+const sourceLabel = (s) => SOURCE_LABELS[s] || ''
 
 const initDateDisplay = (dateObj) => {
 	const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
@@ -195,15 +191,19 @@ const calendarConfirm = (e) => {
 	uni.showToast({ title: '切换至 ' + e.fulldate, icon: 'none' })
 }
 
-const onMonthSwitch = () => {
+const onMonthSwitch = (e) => {
+	if (e?.year && e?.month) {
+		loadCalendarMarks(`${e.year}-${String(e.month).padStart(2, '0')}`)
+		return
+	}
 	loadCalendarMarks()
 }
 
-const loadCalendarMarks = async () => {
+const loadCalendarMarks = async (month = currentMonth()) => {
 	try {
 		const user_id = getUid()
 		if (!user_id) return
-		const res = await callApi('toggle_favorite', 'getMarks', { user_id, month: currentMonth() }).catch(e => {
+		const res = await callApi('toggle_favorite', 'getMarks', { user_id, month }).catch(e => {
 			console.error('getMarks call fail:', e)
 			return { result: null }
 		})
@@ -230,6 +230,47 @@ const FALLBACK_QUOTES = [
 	{ quote: '采菊东篱下，悠然见南山。', author: '陶渊明', source: 'fallback', book_name: '' },
 	{ quote: '行到水穷处，坐看云起时。', author: '王维', source: 'fallback', book_name: '' }
 ]
+
+const getFallbackQuote = (dateStr) => {
+	const day = dateStr ? Number(String(dateStr).slice(-2)) : new Date().getDate()
+	const dayIndex = (Number.isFinite(day) ? day : new Date().getDate()) % FALLBACK_QUOTES.length
+	return { ...FALLBACK_QUOTES[dayIndex], isFavorited: false }
+}
+
+const createSingleCalCard = () => ({
+	quote: '',
+	author: '',
+	source: 'singlecal',
+	book_name: '',
+	isFavorited: false
+})
+
+const buildQuoteList = (normalCards, lishiEvents) => {
+	const list = []
+	const poetry = normalCards.find(i => i.source === 'jinrishici')
+	if (poetry) list.push(poetry)
+	list.push(createSingleCalCard())
+	normalCards.forEach(item => {
+		if (item.source !== 'jinrishici') list.push(item)
+	})
+	if (lishiEvents.length > 0) {
+		list.push({
+			quote: '',
+			author: '',
+			source: 'lishi',
+			book_name: '',
+			isFavorited: false,
+			events: lishiEvents
+		})
+	}
+	return list
+}
+
+const updateDailyQuestion = (list) => {
+	const manualItem = list.find(i => i.source === 'manual')
+	question.value = manualItem?.question || ''
+	answer.value = manualItem?.answer || ''
+}
 
 const loadData = async (dateStr) => {
 	try {
@@ -258,37 +299,18 @@ const loadData = async (dateStr) => {
 		}
 
 		if (normalCards.length === 0 && lishiEvents.length === 0) {
-			const dayIndex = new Date().getDate() % FALLBACK_QUOTES.length
-			normalCards.push({ ...FALLBACK_QUOTES[dayIndex], isFavorited: false })
+			normalCards.push(getFallbackQuote(dateStr))
 		}
 
-		const list = []
-		const poetry = normalCards.find(i => i.source === 'jinrishici')
-		if (poetry) list.push(poetry)
-		list.push({ quote: '', author: '', source: 'singlecal', book_name: '', isFavorited: false })
-		normalCards.forEach(item => { if (item.source !== 'jinrishici') list.push(item) })
-		if (lishiEvents.length > 0) {
-			list.push({ quote: '', author: '', source: 'lishi', book_name: '', isFavorited: false, events: lishiEvents })
-		}
-
+		const list = buildQuoteList(normalCards, lishiEvents)
 		quoteList.value = list
 		await checkFavoriteStatus(list)
-
-		const manualItem = list.find(i => i.source === 'manual')
-		if (manualItem) {
-			question.value = manualItem.question || ''
-			answer.value = manualItem.answer || ''
-		} else {
-			question.value = ''
-			answer.value = ''
-		}
+		updateDailyQuestion(list)
 	} catch (e) {
 		console.error('loadData fail:', e)
-		const dayIndex = new Date().getDate() % FALLBACK_QUOTES.length
-		quoteList.value = [
-			{ ...FALLBACK_QUOTES[dayIndex], isFavorited: false },
-			{ quote: '', author: '', source: 'singlecal', book_name: '', isFavorited: false }
-		]
+		quoteList.value = [getFallbackQuote(dateStr), createSingleCalCard()]
+		question.value = ''
+		answer.value = ''
 	}
 }
 
@@ -352,20 +374,6 @@ const jumpToSingleCal = () => {
 	})
 }
 
-const goToLogin = (targetPath) => {
-	uni.navigateTo({ url: `/pages/login/login?redirect=${encodeURIComponent(targetPath)}` })
-}
-
-const requireLogin = (targetPath) => {
-	const token = getToken()
-	const uid = uni.getStorageSync('current_user_id')
-	if (!token || !uid) {
-		goToLogin(targetPath)
-		return false
-	}
-	return true
-}
-
 const goFavorites = () => {
 	if (!requireLogin('/pages/favorites/favorites')) return
 	uni.navigateTo({ url: '/pages/favorites/favorites' })
@@ -378,7 +386,9 @@ const goSchedule = () => {
 	if (!requireLogin('/pages/schedule/schedule')) return
 	uni.navigateTo({ url: '/pages/schedule/schedule' })
 }
-const goLogin = () => { goToLogin('/pages/index/index') }
+const goLogin = () => {
+	uni.navigateTo({ url: `/pages/login/login?redirect=${encodeURIComponent('/pages/index/index')}` })
+}
 
 const updateUserInitial = () => {
 	const info = uni.getStorageSync('uni_id_user_info')
